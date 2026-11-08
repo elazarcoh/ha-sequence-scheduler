@@ -11,6 +11,7 @@ from homeassistant.helpers.start import async_at_started
 from . import websocket_api
 from .const import CONF_GRACE_MINUTES, DEFAULT_GRACE_MINUTES, DOMAIN
 from .engine import SequenceEngine
+from .frontend import async_register_frontend, async_unregister_frontend
 from .store import QueueStore, TemplateStore
 
 
@@ -33,6 +34,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await engine.async_start()
 
     entry.async_on_unload(async_at_started(hass, _start))
+    await async_register_frontend(hass)
     return True
 
 
@@ -40,4 +42,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if data:
         await data["engine"].async_stop()
+    await async_unregister_frontend(hass)
     return True
