@@ -1,0 +1,72 @@
+name: e2e
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+      - name: Install Python 3.14
+        run: uv python install 3.14
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - name: Install Playwright's Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Prepare the dev config
+        run: mkdir -p dev/config && cp -n dev/config-template/configuration.yaml dev/config/
+
+      - name: Start the throwaway Home Assistant
+        run: docker compose -f dev/docker-compose.yml up -d
+
+      - name: Wait for Home Assistant to answer
+        run: |
+          for i in $(seq 1 120); do
+            code=$(curl -sS -L -o /dev/null -w "%{http_code}" http://127.0.0.1:8125/ || true)
+            echo "attempt $i/120: http_code=$code"
+            [ "$code" = "200" ] && exit 0
+            if [ $((i % 12)) -eq 0 ]; then
+              echo "::group::docker compose ps (attempt $i)"
+              docker compose -f dev/docker-compose.yml ps
+              echo "::endgroup::"
+              echo "::group::docker compose logs, last 100 lines (attempt $i)"
+              docker compose -f dev/docker-compose.yml logs --tail=100
+              echo "::endgroup::"
+            fi
+            sleep 5
+          done
+          echo "Home Assistant never answered on :8125" >&2
+          docker compose -f dev/docker-compose.yml logs
+          exit 1
+
+      - name: Seed and capture a token
+        # `shell: bash` explicitly, not the step-level default. GitHub
+        # Actions' UNWRITTEN default when no `shell:` is given is
+        # `bash -e {0}` - pipefail is NOT part of it, despite ADR 0277
+        # documenting `-eo pipefail` as what an EXPLICIT `shell: bash`
+        # gets (see actions/runner#353). Without this, a failing
+        # dev/seed.py left `token=$(... | tail -1)` exiting 0 with an
+        # empty token - confirmed against this exact commit's own runner
+        # log, which printed `shell: /usr/bin/bash -e {0}`. The
+        # pytest_sessionfinish hardening in e2e/conftest.py now catches
+        # the resulting all-skipped run regardless, but a red step here
+        # names the real error instead of a mystery "everything skipped".
+        shell: bash
+        run: |
+          token=$(uv run python dev/seed.py | tail -1)
+          echo "HA_DEV_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Run the e2e suite
+        run: uv run pytest e2e -v
+
+      - name: Home Assistant logs (always, for post-mortem)
+        if: always()
+        run: docker compose -f dev/docker-compose.yml logs
