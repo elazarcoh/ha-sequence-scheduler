@@ -92,3 +92,27 @@ def test_template_created_in_the_editor(page, base_url):
     card.locator("[role=tab]", has_text="Queue").click()
     page.locator("seq-queue-entry textarea").fill("heat 03:00")
     expect(page.locator("seq-queue-entry .row .ok")).to_have_count(1, timeout=15_000)
+
+
+def test_action_fields_follow_the_chosen_device(page, base_url):
+    """HA's action form needs the target to know the device: without it the
+    mode dropdowns are greyed out and set_temperature has no temperature."""
+    _open(page, base_url)
+    card = page.locator("sequence-scheduler-card")
+    card.locator("[role=tab]", has_text="Templates").click()
+    page.locator("seq-template-list button.add-template").click()
+    dialog = page.locator("seq-template-dialog")
+    start = dialog.locator(".start .action").first
+    start.locator("seq-target-editor ha-selector").wait_for(timeout=15_000)
+    _choose(start.locator(TARGET_PICKER), "ha-generic-picker ha-button", "Dev kids")
+    _choose(start.locator(ACTION_PICKER), "ha-picker-field", "climate.set_temperature", "thermostat target temperature")
+    control = start.locator("seq-service-editor ha-service-control")
+    expect(control.locator("ha-selector-number")).to_have_count(1, timeout=15_000)
+    # Set HVAC mode's required mode dropdown is usable, scoped to the device.
+    _choose(start.locator(ACTION_PICKER), "ha-picker-field", "climate.set_hvac_mode", "thermostat HVAC mode")
+    mode = control.locator("ha-selector-state")
+    expect(mode).to_have_count(1, timeout=15_000)
+    # The field is optional in HA's schema: tick it to fill it in.
+    control.locator("ha-checkbox").first.click()
+    assert mode.evaluate("el => el.context && el.context.filter_entity") == ["climate.dev_kids"]
+    assert mode.evaluate("el => !el.disabled")

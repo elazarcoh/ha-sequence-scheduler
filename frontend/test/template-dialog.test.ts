@@ -32,6 +32,18 @@ const target = (el: any, index: number, section: 'start' | 'end') =>
   el.shadowRoot.querySelectorAll(`.${section} seq-target-editor`)[index];
 
 describe('seq-template-dialog', () => {
+  it("passes each action's target to its action editor", async () => {
+    const el = document.createElement('seq-template-dialog') as any;
+    el.hass = fakeHass();
+    el.template = {
+      id: 't', key: 'kids', name: 'Kids', placeholders: [], end: [],
+      start: [{ action: 'climate.set_hvac_mode', target: { entity_id: ['climate.kids'] }, data: { hvac_mode: 'cool' } }],
+    };
+    document.body.appendChild(el);
+    await el.updateComplete;
+    expect(service(el, 0, 'start').target).toEqual({ entity_id: ['climate.kids'] });
+  });
+
   it('saves the kids example as the backend expects it', async () => {
     const hass = fakeHass();
     const el = await render(hass);

@@ -170,6 +170,7 @@ export class SeqTemplateDialog extends LitElement {
           <seq-service-editor
             .hass=${this.hass}
             .action=${a.action}
+            .target=${a.target}
             .data=${a.data}
             @service-changed=${(e: CustomEvent) => this._onService(section, i, e)}
           ></seq-service-editor>
