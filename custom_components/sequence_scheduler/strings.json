@@ -1,0 +1,26 @@
+{
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Sequence Scheduler is already set up."
+    },
+    "step": {
+      "user": {
+        "title": "Sequence Scheduler",
+        "description": "Queue one-off sequences of actions from the Sequence Scheduler card."
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sequence Scheduler",
+        "data": {
+          "grace_minutes": "Grace window after a restart"
+        },
+        "data_description": {
+          "grace_minutes": "A step missed while Home Assistant was down still runs if it is at most this many minutes late. Older steps are skipped."
+        }
+      }
+    }
+  }
+}
