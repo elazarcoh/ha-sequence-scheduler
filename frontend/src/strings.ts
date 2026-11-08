@@ -4,7 +4,6 @@ export const S = {
   tabQueue: 'Queue',
   tabTemplates: 'Templates',
   notAdmin: 'Only an administrator can use the Sequence Scheduler.',
-  placeholderText: 'kids 01:00 1h 25',
   queueN: (n: number) => `Queue ${n}`,
   fixM: (m: number) => `fix ${m}`,
   queued: (n: number) => `Queued ${n}`,
