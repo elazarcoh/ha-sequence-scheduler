@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.start import async_at_started
 
+from . import websocket_api
 from .const import CONF_GRACE_MINUTES, DEFAULT_GRACE_MINUTES, DOMAIN
 from .engine import SequenceEngine
 from .store import QueueStore, TemplateStore
@@ -25,6 +26,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "queue": queue,
         "engine": engine,
     }
+
+    websocket_api.async_register(hass)
 
     async def _start(_hass: HomeAssistant) -> None:
         await engine.async_start()
