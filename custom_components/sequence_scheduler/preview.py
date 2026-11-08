@@ -17,9 +17,10 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import target as target_helper
+from homeassistant.util import dt as dt_util
 
 from .models import Action, Block, Placeholder, Step, Template
-from .parse import LineError, ParsedLine, next_occurrence, parse_text
+from .parse import LineError, ParsedLine, next_occurrence, parse_text, shows_wall_time
 from .store import QueueStore, TemplateStore
 
 FAR_FUTURE = timedelta(hours=12)
@@ -147,14 +148,24 @@ def _fmt(n: float | None) -> str:
     return "" if n is None else (str(int(n)) if float(n).is_integer() else str(n))
 
 
-def _apply(actions: Iterable[Action], template: Template, values: dict) -> list[Action]:
+def _apply(
+    hass: HomeAssistant, actions: Iterable[Action], template: Template, values: dict
+) -> list[Action]:
+    """Fill in placeholder values and freeze each target to entity ids.
+
+    Freezing is what makes the queued block call exactly the devices the
+    readback listed, even if an area or label changes later (spec §10-11,
+    final review #4). Per action, not the union: a light-plus-plug start
+    must not call light.turn_on on the plug.
+    """
     out = []
     for action in actions:
         data = dict(action.data)
         for p in template.placeholders:
             if p.field in data:
                 data[p.field] = values[p.key]
-        out.append(replace(action, data=data))
+        target = {"entity_id": expand_entities(hass, [action])} if action.target else {}
+        out.append(replace(action, data=data, target=target))
     return out
 
 
@@ -192,6 +203,13 @@ def _resolve(
             row.values[p.key] = value
 
     row.start_at = next_occurrence(parsed.hour, parsed.minute, now)
+    if not shows_wall_time(row.start_at, parsed.hour, parsed.minute):
+        shown = row.start_at.astimezone(dt_util.get_default_time_zone()).strftime("%H:%M")
+        row.warnings.append(Issue(
+            "nonexistent_time",
+            f"{parsed.hour:02d}:{parsed.minute:02d} does not exist that night "
+            f"(clocks jump forward); using {shown}",
+        ))
     if parsed.duration is not None and not template.end:
         row.errors.append(Issue("duration_without_end", f"{template.key} has no end to schedule"))
     elif parsed.duration is not None:
@@ -203,8 +221,8 @@ def _resolve(
 
     if not row.errors:
         row.ok = True
-        row.start_actions = _apply(template.start, template, row.values)
-        row.end_actions = _apply(template.end, template, row.values) if row.end_at else []
+        row.start_actions = _apply(hass, template.start, template, row.values)
+        row.end_actions = _apply(hass, template.end, template, row.values) if row.end_at else []
     return row
 
 

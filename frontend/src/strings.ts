@@ -7,6 +7,7 @@ export const S = {
   queueN: (n: number) => `Queue ${n}`,
   fixM: (m: number) => `fix ${m}`,
   queued: (n: number) => `Queued ${n}`,
+  notQueued: (items: string[]) => `Not queued: ${items.join('; ')}`,
   previewChanged: 'Something changed. Check the list and queue again.',
   unknownTemplate: 'unknown template',
   today: 'today',

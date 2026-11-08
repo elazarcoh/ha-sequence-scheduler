@@ -12,7 +12,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import CALLBACK_TYPE, Context, HomeAssistant
+from homeassistant.helpers import target as target_helper
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.service import async_call_from_config
 from homeassistant.util import dt as dt_util
@@ -33,16 +35,24 @@ class SequenceEngine:
         # Step ids currently executing. A step in here is never started
         # again, so the catch-up path and a timer cannot both run it.
         self._running: set[str] = set()
+        # Set by async_stop. A stopped engine arms nothing, starts nothing
+        # and writes nothing: after a reload the NEW engine owns the queue
+        # (final review #2).
+        self._stopped = False
+        self._tasks: set[asyncio.Task] = set()
 
     # --- lifecycle ---------------------------------------------------------
 
     async def async_start(self) -> None:
+        self._track_current_task()
         now = dt_util.utcnow()
         work = sorted(
             ((b.id, s.id, s.at) for b in self.queue.blocks for s in b.steps),
             key=lambda item: item[2],
         )
         for block_id, step_id, _ in work:
+            if self._stopped:
+                return
             found = self._find(block_id, step_id)
             if found is None:
                 continue
@@ -63,9 +73,22 @@ class SequenceEngine:
                 self._arm(block.id, step)
 
     async def async_stop(self) -> None:
+        self._stopped = True
         for unsub in self._timers.values():
             unsub()
         self._timers.clear()
+        current = asyncio.current_task()
+        pending = [t for t in self._tasks if t is not current and not t.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    def _track_current_task(self) -> None:
+        task = asyncio.current_task()
+        if task is not None and task not in self._tasks:
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
 
     async def async_enqueue(self, blocks: list[Block]) -> None:
         await self.queue.async_add(blocks)
@@ -102,7 +125,11 @@ class SequenceEngine:
         return (block, step) if step is not None else None
 
     def _arm(self, block_id: str, step: Step) -> None:
+        if self._stopped:
+            return
         step_id = step.id
+        if old := self._timers.pop(step_id, None):
+            old()
 
         async def _due(_now: datetime) -> None:
             self._timers.pop(step_id, None)
@@ -129,13 +156,16 @@ class SequenceEngine:
         )
 
     async def _async_drop(self, block: Block, step: Step, outcome: str, detail: str) -> None:
+        if self._stopped:
+            return
         _LOGGER.warning("%s %s %s %s", block.template_name, step.phase, outcome, detail)
         await self.queue.async_remove_step(block.id, step.id)
         self._fire_result(block, step, outcome, detail)
 
     async def _async_run(self, block_id: str, step_id: str) -> None:
-        if step_id in self._running:
+        if step_id in self._running or self._stopped:
             return
+        self._track_current_task()
         found = self._find(block_id, step_id)
         if found is None:
             return
@@ -153,6 +183,8 @@ class SequenceEngine:
                 error = await self._async_call(action, context)
                 if error:
                     errors.append(error)
+            if self._stopped:
+                return
             if self.queue.get(block_id) is not None:
                 await self.queue.async_remove_step(block_id, step_id)
             self._fire_result(
@@ -161,11 +193,38 @@ class SequenceEngine:
         finally:
             self._running.discard(step_id)
 
+    def _unavailable(self, action: Action) -> list[str]:
+        """Targeted entities that are missing or unavailable right now.
+
+        Home Assistant drops unavailable entities from an entity service
+        call WITHOUT raising, so without this an offline AC's "off" would
+        be logged as ran (final review #1). Only `unavailable` counts:
+        `unknown` is the normal state of buttons, scripts and the like.
+        """
+        if not action.target:
+            return []
+        selection = target_helper.TargetSelection(dict(action.target))
+        selected = target_helper.async_extract_referenced_entity_ids(self.hass, selection)
+        out = []
+        for entity_id in sorted(selected.referenced | selected.indirectly_referenced):
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state == STATE_UNAVAILABLE:
+                out.append(entity_id)
+        return out
+
     async def _async_call(self, action: Action, context: Context) -> str | None:
         config: dict = {"action": action.action, "data": dict(action.data)}
         if action.target:
             config["target"] = dict(action.target)
         for attempt in range(1, RETRY_ATTEMPTS + 1):
+            missing = self._unavailable(action)
+            if missing:
+                if attempt == RETRY_ATTEMPTS:
+                    reason = ", ".join(f"{e} unavailable" for e in missing)
+                    _LOGGER.error("%s: %s after %s attempts", action.action, reason, RETRY_ATTEMPTS)
+                    return f"{action.action}: {reason}"
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
+                continue
             try:
                 await async_call_from_config(
                     self.hass, config, blocking=True, validate_config=True, context=context

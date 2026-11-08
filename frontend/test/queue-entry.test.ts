@@ -129,3 +129,33 @@ describe('seq-queue-entry', () => {
     expect((el.shadowRoot.querySelector('button.queue') as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe('seq-queue-entry partial queue', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  it('keeps refused lines in the text box and names them', async () => {
+    const hass = fakeHass();
+    hass.callWS.mockImplementation(async (msg: any): Promise<any> => {
+      if (msg.type === 'sequence_scheduler/templates/list') return { templates: [] };
+      if (msg.type === 'sequence_scheduler/preview') return SPEC_PREVIEW;
+      return {
+        queued: 1,
+        refused: [{ lineno: 1, raw: 'kids 00:00 1h', errors: [{ code: 'already_past', detail: 'line 1: its time has passed' }] }],
+      };
+    });
+    const el = await mount(hass);
+    await type(el, 'kids 00:00 1h\nkids 05:00 1.5h');
+    await settle(el);
+    (el.shadowRoot.querySelector('button.queue') as HTMLButtonElement).click();
+    await vi.advanceTimersByTimeAsync(0);
+    await el.updateComplete;
+    expect((el.shadowRoot.querySelector('textarea') as HTMLTextAreaElement).value).toBe('kids 00:00 1h');
+    const text = el.shadowRoot.textContent;
+    expect(text).toContain('Queued 1');
+    expect(text).toContain('Not queued: kids 00:00 1h (its time has passed)');
+  });
+});

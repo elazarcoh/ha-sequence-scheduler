@@ -1,6 +1,6 @@
 {
   "note": "Written by `npm run build`. See bundle-manifest.mjs; tests/test_frontend.py re-checks it.",
   "source_files": 15,
-  "sources": "2cbe7748f0ca08b2c015e658c4f3e820f89dd2c45b259713de3f41b0c0ad1c55",
-  "bundle": "97ba89170c149a08f6969e34b9fba580852d158813721b381fd911320007f133"
+  "sources": "a1e3df803b93cc63feaeb56b62d9007af162700b20dfa83a82208c7d5e863334",
+  "bundle": "6cf75488610c278f21bdbc861f3c51e9cd15e30b08b8e3809281535f3be203b3"
 }

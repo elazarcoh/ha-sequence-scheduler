@@ -48,6 +48,10 @@ def make_block(start_at, end_at=None, block_id="b1", start=(ON,), end=(OFF,)):
 
 @pytest.fixture
 def services(hass):
+    # Real states for every targeted entity: a missing or unavailable
+    # entity is a failed step (final review #1).
+    hass.states.async_set("climate.kids", "off")
+    hass.states.async_set("switch.fan", "off")
     return {
         "on": async_mock_service(hass, "climate", "set_temperature"),
         "off": async_mock_service(hass, "climate", "turn_off"),
@@ -292,3 +296,75 @@ async def test_setup_uses_grace_option(hass, freezer, services, setup_integratio
     await setup_integration({"grace_minutes": 30})
     await hass.async_block_till_done()
     assert len(services["on"]) == 1
+
+
+async def test_unavailable_entity_is_failed_not_ran(hass, freezer, services):
+    """Final review #1: HA silently drops unavailable entities from a call."""
+    freezer.move_to(T0)
+    hass.states.async_set("climate.kids", "unavailable")
+    results = async_capture_events(hass, EVENT_STEP_RESULT)
+    engine, queue = await new_engine(hass)
+    await engine.async_start()
+    one = T0 + timedelta(minutes=30)
+    await engine.async_enqueue([make_block(one, None, start=(OFF,))])
+    await advance(hass, freezer, one)
+    assert outcomes(results) == [("start", "failed")]
+    assert "climate.kids unavailable" in results[0].data["detail"]
+
+
+async def test_entity_that_comes_back_during_retries_is_called(hass, freezer, services):
+    freezer.move_to(T0)
+    hass.states.async_set("climate.kids", "unavailable")
+
+    async def back_online(_delay):
+        hass.states.async_set("climate.kids", "off")
+
+    results = async_capture_events(hass, EVENT_STEP_RESULT)
+    with patch("custom_components.sequence_scheduler.engine.asyncio.sleep", back_online):
+        engine, queue = await new_engine(hass)
+        await engine.async_start()
+        one = T0 + timedelta(minutes=30)
+        await engine.async_enqueue([make_block(one, None, start=(OFF,))])
+        await advance(hass, freezer, one)
+    assert len(services["off"]) == 1
+    assert outcomes(results) == [("start", "ran")]
+
+
+async def test_stop_halts_catch_up_and_writes_nothing_after(hass, freezer, services):
+    """Final review #2: an unloaded engine must not keep running or arm timers."""
+    import asyncio
+
+    freezer.move_to(T0)
+    hass.states.async_set("climate.kids", "unavailable")
+    gate = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def stuck(_delay):
+        entered.set()
+        await gate.wait()
+
+    a = make_block(T0 - timedelta(minutes=2), None, block_id="a", start=(OFF,))
+    b = make_block(T0 - timedelta(minutes=1), T0 + timedelta(hours=1), block_id="b")
+    with patch("custom_components.sequence_scheduler.engine.asyncio.sleep", stuck):
+        engine, queue = await new_engine(hass, [a, b])
+        task = hass.async_create_task(engine.async_start())
+        await entered.wait()
+        await engine.async_stop()
+        gate.set()
+        await hass.async_block_till_done()
+    assert task.done()
+    assert engine._timers == {}
+    assert services["on"] == []
+    # Nothing written after stop: block a is still in_progress, b untouched.
+    fresh = QueueStore(hass)
+    await fresh.async_load()
+    assert [s.state for s in fresh.get("a").steps] == ["in_progress"]
+    assert len(fresh.get("b").steps) == 2
+
+
+async def test_arm_after_stop_is_a_no_op(hass, freezer, services):
+    freezer.move_to(T0)
+    engine, queue = await new_engine(hass)
+    await engine.async_stop()
+    await engine.async_enqueue([make_block(T0 + timedelta(minutes=5), None)])
+    assert engine._timers == {}

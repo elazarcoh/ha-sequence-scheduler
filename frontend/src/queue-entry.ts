@@ -172,12 +172,23 @@ export class SeqQueueEntry extends LitElement {
     if (!preview || this._busy) return;
     this._busy = true;
     try {
-      const { queued } = await new Api(this.hass!).queue(this._text, preview.now, preview.token);
-      this._text = '';
+      const { queued, refused = [] } = await new Api(this.hass!).queue(
+        this._text,
+        preview.now,
+        preview.token,
+      );
+      // Lines the server refused stay on screen, named, instead of vanishing
+      // behind a bare count (e.g. a time that passed while the user looked).
+      this._text = refused.map((r) => r.raw).join('\n');
       this._preview = null;
       this._hint = null;
-      if (this._textarea) this._textarea.value = '';
-      this._message = S.queued(queued);
+      if (this._textarea) this._textarea.value = this._text;
+      const why = (r: (typeof refused)[number]) =>
+        r.errors.map((e) => e.detail.replace(/^line \d+: /, '')).join(', ');
+      this._message = refused.length
+        ? `${S.queued(queued)}. ${S.notQueued(refused.map((r) => `${r.raw} (${why(r)})`))}`
+        : S.queued(queued);
+      if (refused.length) await this._runPreview();
     } catch (err: any) {
       if (err?.code === 'preview_changed') {
         await this._runPreview();

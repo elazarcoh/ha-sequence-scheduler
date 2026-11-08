@@ -1,5 +1,5 @@
 /** Every websocket call the card makes. Mirrors websocket_api.py. */
-import type { Block, Hass, Preview, Template } from './types';
+import type { Block, Hass, Issue, Preview, Template } from './types';
 
 export class Api {
   constructor(private readonly hass: Hass) {}
@@ -27,7 +27,11 @@ export class Api {
     return this.hass.callWS<Preview>({ type: 'sequence_scheduler/preview', text });
   }
 
-  queue(text: string, now: string, token: string): Promise<{ queued: number }> {
+  queue(
+    text: string,
+    now: string,
+    token: string,
+  ): Promise<{ queued: number; refused?: { lineno: number; raw: string; errors: Issue[] }[] }> {
     return this.hass.callWS({ type: 'sequence_scheduler/queue', text, now, token });
   }
 

@@ -86,7 +86,8 @@ async def test_preview_then_queue_roundtrip(ws):
     assert [r["ok"] for r in preview["rows"]] == [True, True, False]
     assert preview["rows"][0]["start_at"].startswith("2026-11-07T23:00:00")
     msg = await call(ws, "sequence_scheduler/queue", text=text, now=preview["now"], token=preview["token"])
-    assert msg["success"] and msg["result"] == {"queued": 2}
+    assert msg["success"] and msg["result"]["queued"] == 2
+    assert [r["raw"] for r in msg["result"]["refused"]] == ["nope 01:00"]
     blocks = (await call(ws, "sequence_scheduler/queue/list"))["result"]["blocks"]
     assert [b["line"] for b in blocks] == ["kids 01:00 1h 25", "kids 05:00 1.5h 24"]
     assert len(blocks[0]["steps"]) == 2
@@ -147,3 +148,18 @@ async def test_cancel(ws):
 async def test_cancel_not_found(ws):
     msg = await call(ws, "sequence_scheduler/queue/cancel", block_id="nope", run_end=False)
     assert msg["error"]["code"] == "not_found"
+
+
+async def test_partial_queue_reports_refused_lines(ws, freezer):
+    """Final review #5: a line refused as already past must be reported back."""
+    await call(ws, "sequence_scheduler/templates/save", template=KIDS)
+    freezer.move_to(datetime(2026, 11, 7, 23, 59, tzinfo=TZ))
+    text = "kids 00:00 1h\nkids 05:00 1.5h"
+    preview = (await call(ws, "sequence_scheduler/preview", text=text))["result"]
+    freezer.move_to(datetime(2026, 11, 8, 0, 1, tzinfo=TZ))
+    msg = await call(ws, "sequence_scheduler/queue", text=text, now=preview["now"], token=preview["token"])
+    assert msg["success"]
+    assert msg["result"]["queued"] == 1
+    [refused] = msg["result"]["refused"]
+    assert refused["lineno"] == 1 and refused["raw"] == "kids 00:00 1h"
+    assert refused["errors"][0]["code"] == "already_past"

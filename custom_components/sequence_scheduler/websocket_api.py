@@ -153,7 +153,14 @@ async def ws_queue(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None
         connection.send_error(msg["id"], "nothing_to_queue", details or "No valid lines")
         return
     await data["engine"].async_enqueue(blocks)
-    connection.send_result(msg["id"], {"queued": len(blocks)})
+    # Every line not queued goes back, so the card can keep it on screen
+    # rather than let it vanish with a bare count (final review #5).
+    refused = [
+        {"lineno": r.lineno, "raw": r.raw, "errors": [i.to_dict() for i in r.errors]}
+        for r in rows
+        if not r.ok
+    ]
+    connection.send_result(msg["id"], {"queued": len(blocks), "refused": refused})
 
 
 @websocket_api.require_admin

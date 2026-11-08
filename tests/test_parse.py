@@ -104,3 +104,11 @@ async def test_next_occurrence_dst_fallback(jerusalem):
     assert next_occurrence(1, 30, later) == datetime(2026, 10, 24, 23, 30, tzinfo=UTC)
     # Durations are elapsed time.
     assert (first + timedelta(hours=1)) - first == timedelta(minutes=60)
+
+
+async def test_next_occurrence_spring_forward_gap(jerusalem):
+    """Final review #3: 2027-03-26 02:00 jumps to 03:00; 02:30 does not exist."""
+    now = datetime(2027, 3, 25, 22, 0, tzinfo=TZ)
+    got = next_occurrence(2, 30, now)
+    assert got == datetime(2027, 3, 26, 3, 30, tzinfo=TZ)  # after the jump, never 01:30
+    assert next_occurrence(1, 30, now) == datetime(2027, 3, 26, 1, 30, tzinfo=TZ)

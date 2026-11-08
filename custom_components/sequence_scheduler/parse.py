@@ -98,19 +98,29 @@ def _wall(day: date, hour: int, minute: int, tz, fold: int) -> datetime:
     return datetime.combine(day, time(hour, minute, fold=fold), tzinfo=tz).astimezone(UTC)
 
 
+def shows_wall_time(instant: datetime, hour: int, minute: int) -> bool:
+    """Does the local clock read HH:MM at this instant?"""
+    local = instant.astimezone(dt_util.get_default_time_zone())
+    return (local.hour, local.minute) == (hour, minute)
+
+
 def next_occurrence(hour: int, minute: int, now: datetime) -> datetime:
     """The first instant strictly after `now` showing HH:MM on the local clock.
 
     Local means Home Assistant's configured time zone. On a fall-back day
     the repeated wall time has two instants; the earlier one still ahead
-    of `now` wins.
+    of `now` wins. On a spring-forward day HH:MM may not exist at all; then
+    the instant just after the jump is used (02:30 -> 03:30), never the
+    hour before it, and the caller can tell with `shows_wall_time`.
     """
     tz = dt_util.get_default_time_zone()
     local_today = now.astimezone(tz).date()
     now_utc = now.astimezone(UTC)
     for offset in range(0, 3):
         day = local_today + timedelta(days=offset)
-        candidates = sorted({_wall(day, hour, minute, tz, 0), _wall(day, hour, minute, tz, 1)})
+        both = {_wall(day, hour, minute, tz, 0), _wall(day, hour, minute, tz, 1)}
+        real = sorted(c for c in both if shows_wall_time(c, hour, minute))
+        candidates = real or [max(both)]
         for candidate in candidates:
             if candidate > now_utc:
                 return candidate

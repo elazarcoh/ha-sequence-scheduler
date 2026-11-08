@@ -230,3 +230,30 @@ async def test_rows_to_blocks_skips_errors_and_start_only_has_one_step(env):
     assert kids.steps[0].at == datetime(2026, 11, 7, 23, 0, tzinfo=UTC)
     assert kids.steps[0].actions[0].data["temperature"] == 25
     assert len({b.id for b in blocks}) == 5
+
+
+async def test_nonexistent_time_warns(env):
+    hass, templates, queue = env
+    now = datetime(2027, 3, 25, 22, 0, tzinfo=TZ)
+    rows = build_preview(hass, templates, queue, "kids 02:30 1h", now)
+    assert rows[0].ok and codes(rows[0].warnings) == ["nonexistent_time"]
+    assert "03:30" in rows[0].warnings[0].detail
+
+
+async def test_area_target_is_frozen_to_entities(env):
+    """Final review #4: what is queued is the devices the readback listed."""
+    from homeassistant.helpers import area_registry as ar
+    from homeassistant.helpers import entity_registry as er
+
+    hass, templates, queue = env
+    area = ar.async_get(hass).async_create("Kids room")
+    ent = er.async_get(hass).async_get_or_create("switch", "test", "lamp", suggested_object_id="lamp")
+    er.async_get(hass).async_update_entity(ent.entity_id, area_id=area.id)
+    hass.states.async_set(ent.entity_id, "off")
+    await templates.async_save(Template(
+        "t-area", "room", "Room", (Action("switch.turn_on", {"area_id": area.id}, {}),), (), (),
+    ))
+    rows = build_preview(hass, templates, queue, "room 01:00", NOW)
+    assert rows[0].start_actions[0].target == {"entity_id": ["switch.lamp"]}
+    [block] = rows_to_blocks(rows, NOW)
+    assert block.steps[0].actions[0].target == {"entity_id": ["switch.lamp"]}
