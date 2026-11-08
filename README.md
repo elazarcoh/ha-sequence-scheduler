@@ -74,7 +74,7 @@ It works for any device or action: AC, lights, smart plugs, switches, scripts.
 ## Development
 
 ```bash
-uv sync && uv run pytest              # Python suite (162 passed; e2e skips without the dev container)
+uv sync && uv run pytest              # Python suite (168 passed; e2e skips without the dev container)
 cd frontend && npm install && npm test && npm run typecheck && npm run build   # card (Tests  57 passed (57))
 ```
 

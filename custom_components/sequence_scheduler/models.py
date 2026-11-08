@@ -142,6 +142,10 @@ class Block:
     entity_ids: list[str]
     created_at: datetime
     steps: list[Step] = field(default_factory=list)
+    # How the start went once it is done (ran / failed / skipped /
+    # skipped_maybe_ran), so the card never calls a failed start "running".
+    start_outcome: str | None = None
+    start_detail: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -152,6 +156,8 @@ class Block:
             "entity_ids": list(self.entity_ids),
             "created_at": _dt_to_str(self.created_at),
             "steps": [s.to_dict() for s in self.steps],
+            "start_outcome": self.start_outcome,
+            "start_detail": self.start_detail,
         }
 
     @classmethod
@@ -164,6 +170,8 @@ class Block:
             entity_ids=list(d.get("entity_ids") or ()),
             created_at=_dt_from_str(d["created_at"]),
             steps=[Step.from_dict(s) for s in d.get("steps") or ()],
+            start_outcome=d.get("start_outcome"),
+            start_detail=str(d.get("start_detail") or ""),
         )
 
     def __eq__(self, other: object) -> bool:

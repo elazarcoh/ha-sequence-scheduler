@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+import voluptuous as vol
+from homeassistant.helpers import config_validation as cv
+from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.sequence_scheduler.models import Action, Block, Placeholder, Step, Template
 from custom_components.sequence_scheduler.preview import (
@@ -43,6 +46,11 @@ def ac(id_, key, entity, fan):
 @pytest.fixture
 async def env(jerusalem):
     hass = jerusalem
+    # Every action the templates use exists; schema-less mocks accept any field.
+    for domain, service in [("climate", "set_temperature"), ("climate", "turn_off"),
+                            ("light", "turn_on"), ("light", "turn_off"),
+                            ("switch", "turn_on"), ("switch", "turn_off")]:
+        async_mock_service(hass, domain, service)
     hass.states.async_set("climate.kids", "off", {"fan_modes": ["auto", "quiet", "silent", "high"]})
     hass.states.async_set("climate.salon", "off", {"fan_modes": ["auto", "quiet", "high"]})
     hass.states.async_set("light.kitchen", "off")
@@ -310,3 +318,41 @@ async def test_clock_end_in_dst_gap_warns(env):
     rows = build_preview(*env, "heater 01:00 02:30", night)
     assert rows[0].ok and codes(rows[0].warnings) == ["nonexistent_time"]
     assert rows[0].end_at == datetime(2027, 3, 26, 3, 30, tzinfo=TZ)
+
+
+# --- actions checked against the service's own fields ---------------------
+
+SET_TEMPERATURE_SCHEMA = cv.make_entity_service_schema(
+    {vol.Optional("temperature"): vol.Coerce(float), vol.Optional("hvac_mode"): str}
+)
+
+
+async def test_field_the_service_does_not_take_is_an_error(env):
+    hass, templates, queue = env
+    async_mock_service(hass, "climate", "set_temperature", schema=SET_TEMPERATURE_SCHEMA)
+    rows = build_preview(hass, templates, queue, "kids 01:00 1h 25", NOW)
+    assert not rows[0].ok
+    assert codes(rows[0].errors) == ["bad_action"]
+    assert "climate.set_temperature" in rows[0].errors[0].detail
+    assert "fan_mode" in rows[0].errors[0].detail
+
+
+async def test_valid_fields_pass_the_service_schema(env):
+    hass, templates, queue = env
+    async_mock_service(hass, "climate", "set_temperature", schema=SET_TEMPERATURE_SCHEMA)
+    await templates.async_save(Template(
+        "t-ok", "ok", "OK AC",
+        (Action("climate.set_temperature", {"entity_id": ["climate.kids"]}, {"hvac_mode": "cool", "temperature": 26}),),
+        (), (Placeholder("temp", "temperature", "number", 26, min=16, max=30),),
+    ))
+    rows = build_preview(hass, templates, queue, "ok 01:00 24", NOW)
+    assert rows[0].ok, rows[0].errors
+
+
+async def test_unknown_action_is_an_error(env):
+    hass, templates, queue = env
+    await templates.async_save(Template(
+        "t-gone", "gone", "Gone", (Action("nope.do_it", {"entity_id": ["switch.boiler"]}, {}),), (), (),
+    ))
+    rows = build_preview(hass, templates, queue, "gone 01:00", NOW)
+    assert codes(rows[0].errors) == ["unknown_action"]

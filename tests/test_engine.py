@@ -92,6 +92,7 @@ async def test_step_runs_once_at_time(hass, freezer, services):
     assert services["on"][0].data["temperature"] == 25
     assert services["on"][0].data["entity_id"] == ["climate.kids"]
     assert [s.phase for s in queue.get("b1").steps] == ["end"]
+    assert queue.get("b1").start_outcome == "ran"
     await advance(hass, freezer, one + timedelta(minutes=5))
     assert len(services["on"]) == 1
 
@@ -143,6 +144,9 @@ async def test_failing_action_does_not_stop_others_or_end(hass, freezer, service
     assert len(services["switch"]) == 1
     assert outcomes(results) == [("start", "failed")]
     assert "AC offline" in results[0].data["detail"]
+    # The block remembers how its start went, so the card can say so.
+    block = queue.get("b1")
+    assert block.start_outcome == "failed" and "AC offline" in block.start_detail
     await advance(hass, freezer, one + timedelta(hours=1))
     assert len(services["off"]) == 1
 
@@ -368,3 +372,12 @@ async def test_arm_after_stop_is_a_no_op(hass, freezer, services):
     await engine.async_stop()
     await engine.async_enqueue([make_block(T0 + timedelta(minutes=5), None)])
     assert engine._timers == {}
+
+
+async def test_skipped_start_is_remembered(hass, freezer, services):
+    one = T0 + timedelta(minutes=30)
+    engine, queue = await new_engine(hass, [make_block(one, one + timedelta(hours=2))])
+    freezer.move_to(one + timedelta(minutes=20))  # start overdue past grace, end still ahead
+    await engine.async_start()
+    block = queue.get("b1")
+    assert block.start_outcome == "skipped" and "overdue" in block.start_detail

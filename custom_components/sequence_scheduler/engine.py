@@ -159,7 +159,7 @@ class SequenceEngine:
         if self._stopped:
             return
         _LOGGER.warning("%s %s %s %s", block.template_name, step.phase, outcome, detail)
-        await self.queue.async_remove_step(block.id, step.id)
+        await self.queue.async_remove_step(block.id, step.id, outcome, detail)
         self._fire_result(block, step, outcome, detail)
 
     async def _async_run(self, block_id: str, step_id: str) -> None:
@@ -185,11 +185,10 @@ class SequenceEngine:
                     errors.append(error)
             if self._stopped:
                 return
+            outcome, detail = ("failed" if errors else "ran"), "; ".join(errors)
             if self.queue.get(block_id) is not None:
-                await self.queue.async_remove_step(block_id, step_id)
-            self._fire_result(
-                block, step, "failed" if errors else "ran", "; ".join(errors), context
-            )
+                await self.queue.async_remove_step(block_id, step_id, outcome, detail)
+            self._fire_result(block, step, outcome, detail, context)
         finally:
             self._running.discard(step_id)
 

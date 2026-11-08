@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import target as target_helper
 from homeassistant.util import dt as dt_util
@@ -173,6 +174,29 @@ def _apply(
     return out
 
 
+def action_problem(hass: HomeAssistant, action: Action) -> Issue | None:
+    """Would Home Assistant refuse this action outright?
+
+    Checks what the call itself will check: that the action exists, and its
+    data (with the target merged in, as the call does) against the action's
+    own schema. A template saved outside the card's editor can name a field
+    the action does not take, e.g. fan_mode on climate.set_temperature,
+    which otherwise only fails at its scheduled time.
+    """
+    domain, _, service = action.action.lower().partition(".")
+    svc = hass.services.async_services_internal().get(domain, {}).get(service)
+    if svc is None:
+        return Issue("unknown_action", f"{action.action} does not exist in Home Assistant")
+    payload = {**action.data, **(action.target or {})}
+    if svc.schema is None or any(isinstance(v, str) and "{" in v for v in payload.values()):
+        return None
+    try:
+        svc.schema(payload)
+    except vol.Invalid as err:
+        return Issue("bad_action", f"{action.action}: {err}")
+    return None
+
+
 def _clock(row: PreviewRow, hour: int, minute: int, after: datetime) -> datetime:
     """The next HH:MM after `after`, warning on the row when it falls in a DST gap."""
     at = next_occurrence(hour, minute, after)
@@ -247,6 +271,10 @@ def _resolve(
         row.ok = True
         row.start_actions = _apply(hass, template.start, template, row.values)
         row.end_actions = _apply(hass, template.end, template, row.values) if row.end_at else []
+        for action in (*row.start_actions, *row.end_actions):
+            if issue := action_problem(hass, action):
+                row.errors.append(issue)
+                row.ok = False
     return row
 
 

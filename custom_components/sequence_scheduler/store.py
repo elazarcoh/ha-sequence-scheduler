@@ -118,8 +118,12 @@ class QueueStore:
         step.state = state
         await self._persist()
 
-    async def async_remove_step(self, block_id: str, step_id: str) -> None:
+    async def async_remove_step(
+        self, block_id: str, step_id: str, outcome: str | None = None, detail: str = ""
+    ) -> None:
         block = self._require(block_id)
+        if outcome is not None and any(s.id == step_id and s.phase == "start" for s in block.steps):
+            block.start_outcome, block.start_detail = outcome, detail
         block.steps = [s for s in block.steps if s.id != step_id]
         if not block.steps:
             self._blocks = [b for b in self._blocks if b.id != block_id]

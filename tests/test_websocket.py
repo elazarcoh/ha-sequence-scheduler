@@ -194,3 +194,19 @@ async def test_now_start_is_queued_and_runs(hass, ws, freezer):
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert [c.data["temperature"] for c in calls] == [24]
+
+
+async def test_save_refuses_a_field_the_action_does_not_take(hass, ws):
+    import voluptuous as vol
+    from homeassistant.helpers import config_validation as cv
+
+    schema = cv.make_entity_service_schema(
+        {vol.Optional("temperature"): vol.Coerce(float), vol.Optional("hvac_mode"): str}
+    )
+    async_mock_service(hass, "climate", "set_temperature", schema=schema)
+    msg = await call(ws, "sequence_scheduler/templates/save", template=KIDS)
+    assert msg["error"]["code"] == "template_invalid"
+    assert "bad_action" in msg["error"]["message"] and "fan_mode" in msg["error"]["message"]
+    unknown = {**KIDS, "key": "x", "start": [{**KIDS["start"][0], "action": "nope.do_it"}], "placeholders": []}
+    msg = await call(ws, "sequence_scheduler/templates/save", template=unknown)
+    assert "unknown_action" in msg["error"]["message"]

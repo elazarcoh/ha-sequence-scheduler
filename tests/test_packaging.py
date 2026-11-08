@@ -14,7 +14,7 @@ def test_hacs_json_declares_the_integration():
 
 def test_manifest_has_a_version_for_hacs():
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    assert manifest["version"] == "0.2.0"
+    assert manifest["version"] == "0.2.1"
     assert manifest["domain"] == "sequence_scheduler"
     assert manifest["single_config_entry"] is True
 

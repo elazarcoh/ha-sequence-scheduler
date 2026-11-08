@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN, SIGNAL_QUEUE_CHANGED
 from .preview import (
     Issue,
+    action_problem,
     build_preview,
     expand_entities,
     preview_token,
@@ -74,6 +75,9 @@ async def ws_templates_save(hass: HomeAssistant, connection, msg: dict[str, Any]
         return _not_set_up(connection, msg)
     try:
         template = validate_template(msg["template"])
+        for action in (*template.start, *template.end):
+            if issue := action_problem(hass, action):
+                raise TemplateError(issue.code, issue.detail)
         await data["templates"].async_save(template)
     except TemplateError as err:
         connection.send_error(msg["id"], "template_invalid", f"{err.code}: {err.detail}")

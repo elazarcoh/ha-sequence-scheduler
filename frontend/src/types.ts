@@ -74,6 +74,9 @@ export interface Block {
   entity_ids: string[];
   created_at: string;
   steps: Step[];
+  /** How the start went once done: ran / failed / skipped / skipped_maybe_ran. */
+  start_outcome?: string | null;
+  start_detail?: string;
 }
 
 /** The slice of Home Assistant's frontend `hass` object this card uses. */

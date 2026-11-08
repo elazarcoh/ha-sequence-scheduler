@@ -55,3 +55,14 @@ def test_block_roundtrip_keeps_utc():
     assert back == block
     assert back.steps[0].at.tzinfo == UTC
     assert back.steps[1].state == "in_progress"
+
+
+def test_block_start_outcome_roundtrip_and_old_data():
+    at = datetime(2026, 11, 8, 1, 0, tzinfo=UTC)
+    block = Block("b1", "x", "X", {}, [], at, [Step("s2", "end", at, [KIDS.end[0]])],
+                  start_outcome="failed", start_detail="climate.set_temperature: bad")
+    back = Block.from_dict(block.to_dict())
+    assert (back.start_outcome, back.start_detail) == ("failed", "climate.set_temperature: bad")
+    old = block.to_dict()
+    del old["start_outcome"], old["start_detail"]
+    assert Block.from_dict(old).start_outcome is None

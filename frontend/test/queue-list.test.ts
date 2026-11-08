@@ -49,6 +49,22 @@ const cancelCalls = (hass: any) =>
 describe('seq-queue-list', () => {
   afterEach(() => (document.body.innerHTML = ''));
 
+  it('says a start failed or was skipped instead of running', async () => {
+    const { hass, send } = fakeHass();
+    const el = await mount(hass);
+    send([
+      { ...RUNNING, id: 'f', start_outcome: 'failed', start_detail: 'climate.set_temperature: bad field' },
+      { ...RUNNING, id: 's', start_outcome: 'skipped', start_detail: 'overdue by 20 min' },
+      { ...RUNNING, id: 'r', start_outcome: 'ran', start_detail: '' },
+    ]);
+    await el.updateComplete;
+    const text = [...el.shadowRoot.querySelectorAll('.block')].map((b: any) => b.textContent);
+    expect(text[0]).toContain('start failed: climate.set_temperature: bad field');
+    expect(text[0]).not.toContain('running');
+    expect(text[1]).toContain('start skipped: overdue by 20 min');
+    expect(text[2]).toContain('running');
+  });
+
   it('shows the empty state, then blocks from a push', async () => {
     const { hass, send } = fakeHass();
     const el = await mount(hass);

@@ -94,6 +94,14 @@ export class SeqQueueList extends LitElement {
     }
   }
 
+  /** What to say about a start that is done, for a block whose end is pending. */
+  private _startState(block: Block): string {
+    const detail = block.start_detail ? `: ${block.start_detail}` : '';
+    if (block.start_outcome === 'failed') return `${S.startFailed}${detail}`;
+    if (block.start_outcome?.startsWith('skipped')) return `${S.startSkipped}${detail}`;
+    return S.running;
+  }
+
   private _isRunning(block: Block) {
     return !block.steps.some((s) => s.phase === 'start') && block.steps.some((s) => s.phase === 'end');
   }
@@ -114,7 +122,7 @@ export class SeqQueueList extends LitElement {
 
   private _steps(block: Block) {
     const tz = this.hass?.config?.time_zone;
-    const running = this._isRunning(block) ? `${S.running} · ` : '';
+    const running = this._isRunning(block) ? `${this._startState(block)} · ` : '';
     return (
       running +
       block.steps
