@@ -1,0 +1,34 @@
+# Copied into dev/config/ on first run (dev/config/ itself is git-ignored).
+homeassistant:
+  time_zone: Asia/Jerusalem
+
+default_config:
+
+input_boolean:
+  heater_kids:
+    name: Thermostat output (kids)
+
+template:
+  - sensor:
+      - name: Dev room temperature
+        unique_id: dev_room_temperature
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state: "22"
+
+climate:
+  - platform: generic_thermostat
+    name: Dev kids
+    unique_id: dev_kids
+    ac_mode: true
+    heater: input_boolean.heater_kids
+    target_sensor: sensor.dev_room_temperature
+    min_temp: 14
+    max_temp: 31
+    target_temp: 24
+    initial_hvac_mode: "off"
+
+logger:
+  default: info
+  logs:
+    custom_components.sequence_scheduler: debug

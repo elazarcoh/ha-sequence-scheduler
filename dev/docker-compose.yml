@@ -1,0 +1,15 @@
+# Adapted from ha-shabbat-scheduler dev/docker-compose.yml.
+services:
+  ha:
+    image: ghcr.io/home-assistant/home-assistant:2026.9.0
+    container_name: sequence-scheduler-dev
+    ports:
+      # Bound to every interface so this throwaway instance can be opened
+      # from a phone on the LAN. It has a known weak password: keep it on a
+      # trusted network and never point anything at the real instance.
+      - "0.0.0.0:8125:8123"
+    volumes:
+      - ./config:/config
+      - ../custom_components/sequence_scheduler:/config/custom_components/sequence_scheduler:ro
+    environment:
+      TZ: Asia/Jerusalem
