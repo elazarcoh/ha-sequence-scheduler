@@ -204,14 +204,17 @@ export class SeqQueueEntry extends LitElement {
   private _row(row: PreviewRow) {
     const tz = this.hass?.config?.time_zone;
     const now = this._preview!.now;
+    const approx = row.relative ? '≈' : '';
     const time = row.start_at
-      ? row.end_at
+      ? approx + (row.end_at
         ? `${hhmm(row.start_at, tz)}–${hhmm(row.end_at, tz)}`
-        : hhmm(row.start_at, tz)
+        : hhmm(row.start_at, tz))
       : '--:--';
     return html`<div class="row">
       <span class="time" dir="ltr">${time}</span>
-      ${row.start_at ? html`<span class="day">${dayLabel(row.start_at, now, tz)}</span>` : nothing}
+      ${row.start_at
+        ? html`<span class="day">${row.relative ? S.fromQueuePress : dayLabel(row.start_at, now, tz)}</span>`
+        : nothing}
       <span class="name" dir="auto">${row.template_name ?? row.raw}</span>
       <span class="values" dir="auto">${formatValues(row.values)}</span>
       ${row.ok ? html`<span class="ok">✓</span>` : nothing}

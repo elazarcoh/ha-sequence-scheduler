@@ -141,10 +141,16 @@ async def ws_queue(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None
             msg["id"], "preview_changed", "Something changed since the preview. Check and queue again."
         )
         return
+    # A relative start (+30m, now) counts from this press, not from the
+    # preview: re-resolve just those lines at the real time. Clock-time
+    # lines keep exactly the times the readback showed.
+    if any(r.relative for r in rows):
+        at_press = build_preview(hass, data["templates"], data["queue"], msg["text"], real_now)
+        rows = [fresh if old.relative else old for old, fresh in zip(rows, at_press, strict=True)]
     # Review Focus 1: the times shown stay put, but a step whose time has
     # passed since the preview is refused - never run late, never moved.
     for row in rows:
-        if row.ok and row.start_at <= real_now:
+        if row.ok and not row.relative and row.start_at <= real_now:
             row.ok = False
             row.errors.append(Issue("already_past", f"line {row.lineno}: its time has passed"))
     blocks = rows_to_blocks(rows, real_now)

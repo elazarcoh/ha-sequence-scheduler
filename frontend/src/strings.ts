@@ -5,6 +5,7 @@ export const S = {
   tabTemplates: 'Templates',
   notAdmin: 'Only an administrator can use the Sequence Scheduler.',
   queueN: (n: number) => `Queue ${n}`,
+  fromQueuePress: 'from Queue press',
   fixM: (m: number) => `fix ${m}`,
   queued: (n: number) => `Queued ${n}`,
   notQueued: (items: string[]) => `Not queued: ${items.join('; ')}`,

@@ -11,6 +11,16 @@ const DURATION = [/^\d+(\.\d+)?h$/i, /^\d+m$/i, /^\d+h\d{1,2}m?$/i];
 
 const isDuration = (token: string) => DURATION.some((re) => re.test(token));
 
+/** A start token: HH:MM, now, or +<duration>; optionally `-HH:MM` for a range. */
+function startToken(token: string): { ok: boolean; range: boolean } {
+  const [start, ...end] = token.split('-');
+  const startOk = TIME.test(start) || start.toLowerCase() === 'now'
+    || (start.startsWith('+') && isDuration(start.slice(1)));
+  if (!startOk || end.length > 1) return { ok: false, range: false };
+  if (end.length === 1) return { ok: TIME.test(end[0]), range: true };
+  return { ok: true, range: false };
+}
+
 function describe(p: Placeholder): string {
   const options = p.resolved_options ?? p.options;
   const def = String(p.default);
@@ -31,10 +41,12 @@ export function hintFor(line: string, templates: Template[]): string | null {
 
   const template = templates.find((t) => t.key.toLocaleLowerCase() === folded);
   if (!template) return 'unknown template';
-  if (tokens.length < 2 || !TIME.test(tokens[1])) return null;
+  if (tokens.length < 2) return null;
+  const start = startToken(tokens[1]);
+  if (!start.ok) return null;
 
   let rest = tokens.slice(2);
-  if (rest.length && isDuration(rest[0])) rest = rest.slice(1);
+  if (!start.range && rest.length && (isDuration(rest[0]) || TIME.test(rest[0]))) rest = rest.slice(1);
   const named = new Set(
     rest.filter((t) => t.includes('=')).map((t) => t.split('=', 1)[0].toLocaleLowerCase()),
   );

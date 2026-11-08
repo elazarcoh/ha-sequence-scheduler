@@ -112,3 +112,60 @@ async def test_next_occurrence_spring_forward_gap(jerusalem):
     got = next_occurrence(2, 30, now)
     assert got == datetime(2027, 3, 26, 3, 30, tzinfo=TZ)  # after the jump, never 01:30
     assert next_occurrence(1, 30, now) == datetime(2027, 3, 26, 1, 30, tzinfo=TZ)
+
+
+# --- relative starts and clock-time ends ----------------------------------
+
+
+@pytest.mark.parametrize(
+    "token,minutes", [("+30m", 30), ("+1h30", 90), ("+1.5h", 90), ("now", 0), ("NOW", 0), ("+0m", 0)]
+)
+def test_relative_start(token, minutes):
+    p = one(f"kids {token} 1h 25")
+    assert isinstance(p, ParsedLine)
+    assert p.delay == timedelta(minutes=minutes)
+    assert p.hour is None and p.minute is None
+    assert p.duration == timedelta(hours=1) and p.positional == ("25",)
+
+
+def test_clock_start_has_no_delay():
+    p = one("kids 01:00 1h")
+    assert p.delay is None and (p.end_hour, p.end_minute) == (None, None)
+
+
+def test_clock_end():
+    p = one("kids 01:00 02:30 25")
+    assert (p.hour, p.minute, p.end_hour, p.end_minute) == (1, 0, 2, 30)
+    assert p.duration is None and p.positional == ("25",)
+
+
+@pytest.mark.parametrize(
+    "text,start,delay,end",
+    [
+        ("kids 01:00-02:30 25", (1, 0), None, (2, 30)),
+        ("kids +10m-03:00", (None, None), timedelta(minutes=10), (3, 0)),
+        ("kids now-6:05", (None, None), timedelta(0), (6, 5)),
+    ],
+)
+def test_range_token(text, start, delay, end):
+    p = one(text)
+    assert isinstance(p, ParsedLine)
+    assert (p.hour, p.minute) == start and p.delay == delay
+    assert (p.end_hour, p.end_minute) == end and p.duration is None
+
+
+@pytest.mark.parametrize(
+    "text,code",
+    [
+        ("kids 01:00-1h", "bad_end"),
+        ("kids 01:00-", "bad_end"),
+        ("kids 01:00-02:00 1h", "two_ends"),
+        ("kids 01:00-02:00 03:00", "two_ends"),
+        ("kids +30 1h", "bad_time"),
+        ("kids +0:30 1h", "bad_time"),
+        ("kids soon 1h", "bad_time"),
+    ],
+)
+def test_range_and_relative_errors(text, code):
+    e = one(text)
+    assert isinstance(e, LineError) and e.code == code, e

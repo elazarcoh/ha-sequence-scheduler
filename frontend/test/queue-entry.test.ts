@@ -6,7 +6,7 @@ const row = (lineno: number, ok: boolean, over: Partial<PreviewRow> = {}): Previ
   lineno, raw: `line ${lineno}`, ok, errors: ok ? [] : [{ code: 'not_an_option', detail: "fan: 'low' is not one of auto, quiet, high" }],
   warnings: [], template_id: 't', template_name: 'Kids AC', values: { temp: 25 },
   start_at: '2026-11-07T23:00:00+00:00', end_at: '2026-11-08T00:00:00+00:00', entity_ids: [],
-  start_actions: [], end_actions: [], ...over,
+  start_actions: [], end_actions: [], relative: false, ...over,
 });
 
 const SPEC_PREVIEW: Preview = {
@@ -88,6 +88,19 @@ describe('seq-queue-entry', () => {
     expect(rows[0].querySelector('.name').getAttribute('dir')).toBe('auto');
     expect(rows[4].querySelector('.time').textContent).not.toContain('–');
     expect(rows[5].textContent).toContain('is not one of auto, quiet, high');
+  });
+
+  it('marks a relative start as counted from the Queue press', async () => {
+    const hass = fakeHass();
+    const relative: Preview = { ...SPEC_PREVIEW, rows: [row(1, true, { relative: true })] };
+    hass.callWS.mockImplementation(async (msg: any) =>
+      msg.type === 'sequence_scheduler/preview' ? relative : { templates: [] });
+    const el = await mount(hass);
+    await type(el, 'kids +30m 1h');
+    await settle(el);
+    const r = el.shadowRoot.querySelector('.row');
+    expect(r.querySelector('.time').textContent).toContain('≈01:00–02:00');
+    expect(r.querySelector('.day').textContent).toBe('from Queue press');
   });
 
   it('queues with the last preview token and clears the text', async () => {

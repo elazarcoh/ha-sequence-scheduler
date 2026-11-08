@@ -16,7 +16,7 @@ It works for any device or action: AC, lights, smart plugs, switches, scripts.
 2. **Queue (the one-minute part).** Write one line per block:
 
    ```
-   <name> <HH:MM> [duration] [values...]
+   <name> <start>[-<HH:MM>] [end] [values...]
    ```
 
    ```
@@ -26,10 +26,21 @@ It works for any device or action: AC, lights, smart plugs, switches, scripts.
    heater 06:00 45m
    boiler 05:30
    salon 13:00 2h fan=low
+   kids 01:00 02:30 25
+   kids 01:00-02:30 25
+   heater +20m 1h
+   heater now-06:00
    ```
 
-   - **Time** is the next time the clock shows HH:MM. Typed at 22:30, `01:00` means tonight.
-   - **Duration:** `1h`, `1.5h`, `90m`, `1h30`. The template's end runs when the duration is up.
+   - **Start** is either a clock time or a delay:
+     - `01:00` means the next time the clock shows 01:00. Typed at 22:30, that's tonight.
+     - `+30m`, `+1h30` or `now` count from the moment you press Queue. The readback marks these
+       times with ≈.
+   - **End** (optional) is either a duration or a clock time:
+     - `1h`, `1.5h`, `90m` or `1h30` count from the start.
+     - `02:30` means the first 02:30 after the start.
+     - `<start>-<HH:MM>`, for example `01:00-02:30` or `now-06:00`, gives the start and the end in
+       one go.
    - **Values** go in the template's order, or by name (`fan=low`). Anything left out uses its default.
    - As you type, a hint shows what the template expects next. The readback lists every line with its
      real times and flags mistakes before anything is queued. For example, a fan mode that AC doesn't
@@ -63,7 +74,7 @@ It works for any device or action: AC, lights, smart plugs, switches, scripts.
 ## Development
 
 ```bash
-uv sync && uv run pytest              # Python suite (135 passed; e2e skips without the dev container)
+uv sync && uv run pytest              # Python suite (162 passed; e2e skips without the dev container)
 cd frontend && npm install && npm test && npm run typecheck && npm run build   # card (Tests  57 passed (57))
 ```
 

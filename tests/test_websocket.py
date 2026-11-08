@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from pytest_homeassistant_custom_component.common import async_mock_service
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
 from custom_components.sequence_scheduler.const import DOMAIN
 
@@ -163,3 +163,34 @@ async def test_partial_queue_reports_refused_lines(ws, freezer):
     [refused] = msg["result"]["refused"]
     assert refused["lineno"] == 1 and refused["raw"] == "kids 00:00 1h"
     assert refused["errors"][0]["code"] == "already_past"
+
+
+async def test_relative_start_counts_from_the_queue_press(hass, ws, freezer):
+    await call(ws, "sequence_scheduler/templates/save", template=KIDS)
+    text = "kids +30m 1h 25\nkids 23:00 1h"
+    preview = (await call(ws, "sequence_scheduler/preview", text=text))["result"]
+    assert datetime.fromisoformat(preview["rows"][0]["start_at"]) == datetime(2026, 11, 7, 21, 30, tzinfo=TZ)
+    assert preview["rows"][0]["relative"] is True
+    freezer.tick(timedelta(minutes=4))
+    msg = await call(ws, "sequence_scheduler/queue", text=text, now=preview["now"], token=preview["token"])
+    assert msg["success"] and msg["result"]["queued"] == 2
+    blocks = (await call(ws, "sequence_scheduler/queue/list"))["result"]["blocks"]
+    by_line = {b["line"]: [datetime.fromisoformat(s["at"]) for s in b["steps"]] for b in blocks}
+    # The relative line moves with the press; the clock line stays as shown.
+    assert by_line["kids +30m 1h 25"] == [
+        datetime(2026, 11, 7, 21, 34, tzinfo=TZ),
+        datetime(2026, 11, 7, 22, 34, tzinfo=TZ),
+    ]
+    assert by_line["kids 23:00 1h"][0] == datetime(2026, 11, 7, 23, 0, tzinfo=TZ)
+
+
+async def test_now_start_is_queued_and_runs(hass, ws, freezer):
+    calls = async_mock_service(hass, "climate", "set_temperature")
+    await call(ws, "sequence_scheduler/templates/save", template=KIDS)
+    preview = (await call(ws, "sequence_scheduler/preview", text="kids now 1h 24"))["result"]
+    freezer.tick(timedelta(seconds=20))
+    msg = await call(ws, "sequence_scheduler/queue", text="kids now 1h 24", now=preview["now"], token=preview["token"])
+    assert msg["success"] and msg["result"]["queued"] == 1 and msg["result"]["refused"] == []
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert [c.data["temperature"] for c in calls] == [24]

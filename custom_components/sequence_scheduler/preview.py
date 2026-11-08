@@ -24,6 +24,7 @@ from .parse import LineError, ParsedLine, next_occurrence, parse_text, shows_wal
 from .store import QueueStore, TemplateStore
 
 FAR_FUTURE = timedelta(hours=12)
+LONG_BLOCK = timedelta(hours=12)
 _POINT = timedelta(microseconds=1)
 
 
@@ -51,6 +52,8 @@ class PreviewRow:
     entity_ids: list[str] = field(default_factory=list)
     start_actions: list[Action] = field(default_factory=list)
     end_actions: list[Action] = field(default_factory=list)
+    # The start counts from "now" (+30m, now) rather than a clock time.
+    relative: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -67,6 +70,7 @@ class PreviewRow:
             "entity_ids": list(self.entity_ids),
             "start_actions": [a.to_dict() for a in self.start_actions],
             "end_actions": [a.to_dict() for a in self.end_actions],
+            "relative": self.relative,
         }
 
 
@@ -169,6 +173,19 @@ def _apply(
     return out
 
 
+def _clock(row: PreviewRow, hour: int, minute: int, after: datetime) -> datetime:
+    """The next HH:MM after `after`, warning on the row when it falls in a DST gap."""
+    at = next_occurrence(hour, minute, after)
+    if not shows_wall_time(at, hour, minute):
+        shown = at.astimezone(dt_util.get_default_time_zone()).strftime("%H:%M")
+        row.warnings.append(Issue(
+            "nonexistent_time",
+            f"{hour:02d}:{minute:02d} does not exist that night "
+            f"(clocks jump forward); using {shown}",
+        ))
+    return at
+
+
 def _resolve(
     hass: HomeAssistant, templates: TemplateStore, parsed: ParsedLine, now: datetime
 ) -> PreviewRow:
@@ -202,18 +219,25 @@ def _resolve(
         else:
             row.values[p.key] = value
 
-    row.start_at = next_occurrence(parsed.hour, parsed.minute, now)
-    if not shows_wall_time(row.start_at, parsed.hour, parsed.minute):
-        shown = row.start_at.astimezone(dt_util.get_default_time_zone()).strftime("%H:%M")
-        row.warnings.append(Issue(
-            "nonexistent_time",
-            f"{parsed.hour:02d}:{parsed.minute:02d} does not exist that night "
-            f"(clocks jump forward); using {shown}",
-        ))
-    if parsed.duration is not None and not template.end:
+    tz = dt_util.get_default_time_zone()
+    if parsed.delay is not None:
+        row.relative = True
+        row.start_at = now + parsed.delay
+    else:
+        row.start_at = _clock(row, parsed.hour, parsed.minute, now)
+    has_end = parsed.duration is not None or parsed.end_hour is not None
+    if has_end and not template.end:
         row.errors.append(Issue("duration_without_end", f"{template.key} has no end to schedule"))
     elif parsed.duration is not None:
         row.end_at = row.start_at + parsed.duration
+    elif parsed.end_hour is not None:
+        start_local = row.start_at.astimezone(tz)
+        if (start_local.hour, start_local.minute) == (parsed.end_hour, parsed.end_minute):
+            row.errors.append(Issue("end_is_start", "the end is the same time as the start"))
+        else:
+            row.end_at = _clock(row, parsed.end_hour, parsed.end_minute, row.start_at)
+            if row.end_at - row.start_at > LONG_BLOCK:
+                row.warnings.append(Issue("long_block", "lasts more than 12 hours"))
     elif template.end:
         row.warnings.append(Issue("no_duration", "no duration given: only the start is queued"))
     if row.start_at - now > FAR_FUTURE:

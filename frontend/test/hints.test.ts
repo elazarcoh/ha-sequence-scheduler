@@ -37,6 +37,16 @@ describe('hintFor', () => {
     expect(hintFor('kids 01:00 1h 25 silent', TEMPLATES)).toBeNull();
   });
 
+  it('accepts relative starts, clock ends and ranges', () => {
+    const full = 'temp (26) · fan (silent: auto / quiet / silent / high)';
+    for (const line of ['kids +30m ', 'kids now ', 'kids NOW 1h ', 'kids +1h30 02:00 ',
+      'kids 01:00 02:30 ', 'kids 01:00-02:30 ', 'kids now-6:00 ', 'kids +10m-03:00 ']) {
+      expect(hintFor(line, TEMPLATES), line).toBe(full);
+    }
+    expect(hintFor('kids 01:00-02:30 25 ', TEMPLATES)).toBe('fan (silent: auto / quiet / silent / high)');
+    expect(hintFor('kids +30 ', TEMPLATES)).toBeNull();
+  });
+
   it('works with a Hebrew key', () => {
     expect(hintFor('מזגן 01:00 1h ', TEMPLATES)).toContain('temp (26)');
   });

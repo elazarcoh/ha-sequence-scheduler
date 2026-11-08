@@ -48,6 +48,8 @@ export interface PreviewRow {
   entity_ids: string[];
   start_actions: ActionData[];
   end_actions: ActionData[];
+  /** The start counts from the Queue press (+30m, now), not a clock time. */
+  relative: boolean;
 }
 
 export interface Preview {

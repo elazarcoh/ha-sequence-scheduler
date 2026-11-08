@@ -1,6 +1,11 @@
 """Text lines -> ParsedLine or LineError, plus wall-clock time resolution.
 
-Grammar, one block per line:  <key> <HH:MM> [<duration>] [<values...>]
+Grammar, one block per line:  <key> <start>[-<HH:MM>] [<end>] [<values...>]
+
+- start: HH:MM (the next time the clock shows it), +<duration> (that long
+  after "now"), or `now`.
+- end: a duration after the start, or HH:MM (the first time the clock shows
+  it after the start). `<start>-<HH:MM>` gives both in one token.
 Values are positional, or named as key=value; positional must come first.
 """
 
@@ -23,11 +28,16 @@ class ParsedLine:
     lineno: int
     raw: str
     key: str
-    hour: int
-    minute: int
+    # A clock start (hour, minute) or a relative one (delay); never both.
+    hour: int | None
+    minute: int | None
     duration: timedelta | None
     positional: tuple[str, ...]
     named: dict[str, str] = field(default_factory=dict)
+    delay: timedelta | None = None
+    # A clock end; never set together with duration.
+    end_hour: int | None = None
+    end_minute: int | None = None
 
 
 @dataclass(frozen=True)
@@ -50,20 +60,50 @@ def parse_duration(token: str) -> timedelta | None:
     return None
 
 
+_START_HELP = "a time like 01:00, +30m or now"
+
+
+def _parse_start(token: str) -> tuple[int | None, int | None, timedelta | None] | None:
+    """(hour, minute, delay) for a start token, or None when it is not one."""
+    if m := _TIME.match(token):
+        return int(m.group(1)), int(m.group(2)), None
+    if token.casefold() == "now":
+        return None, None, timedelta(0)
+    if token.startswith("+") and (d := parse_duration(token[1:])) is not None:
+        return None, None, d
+    return None
+
+
 def _parse_line(lineno: int, raw: str) -> ParsedLine | LineError:
     tokens = raw.split()
     key = tokens[0]
     if len(tokens) < 2:
-        return LineError(lineno, raw, "missing_time", "add a time like 01:00")
-    m = _TIME.match(tokens[1])
-    if not m:
-        return LineError(lineno, raw, "bad_time", f"{tokens[1]!r} is not a time like 01:00")
+        return LineError(lineno, raw, "missing_time", f"add {_START_HELP}")
+    start_token, dash, range_end = tokens[1].partition("-")
+    start = _parse_start(start_token)
+    if start is None:
+        return LineError(lineno, raw, "bad_time", f"{start_token!r} is not {_START_HELP}")
+    hour, minute, delay = start
     rest = tokens[2:]
     duration = None
-    if rest and (d := parse_duration(rest[0])) is not None:
+    end_hour = end_minute = None
+    if dash:
+        if not (m := _TIME.match(range_end)):
+            return LineError(
+                lineno, raw, "bad_end", f"after '-' put a clock time like 02:30, not {range_end!r}"
+            )
+        end_hour, end_minute = int(m.group(1)), int(m.group(2))
+        if rest and (parse_duration(rest[0]) is not None or _TIME.match(rest[0])):
+            return LineError(
+                lineno, raw, "two_ends", f"{rest[0]!r} is a second end; the range already has one"
+            )
+    elif rest and (d := parse_duration(rest[0])) is not None:
         if d <= timedelta(0):
             return LineError(lineno, raw, "bad_duration", f"{rest[0]!r} is zero")
         duration = d
+        rest = rest[1:]
+    elif rest and (m := _TIME.match(rest[0])):
+        end_hour, end_minute = int(m.group(1)), int(m.group(2))
         rest = rest[1:]
     positional: list[str] = []
     named: dict[str, str] = {}
@@ -79,7 +119,8 @@ def _parse_line(lineno: int, raw: str) -> ParsedLine | LineError:
         else:
             positional.append(token)
     return ParsedLine(
-        lineno, raw, key, int(m.group(1)), int(m.group(2)), duration, tuple(positional), named
+        lineno, raw, key, hour, minute, duration, tuple(positional), named,
+        delay=delay, end_hour=end_hour, end_minute=end_minute,
     )
 
 

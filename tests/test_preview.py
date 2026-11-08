@@ -257,3 +257,56 @@ async def test_area_target_is_frozen_to_entities(env):
     assert rows[0].start_actions[0].target == {"entity_id": ["switch.lamp"]}
     [block] = rows_to_blocks(rows, NOW)
     assert block.steps[0].actions[0].target == {"entity_id": ["switch.lamp"]}
+
+
+# --- relative starts and clock-time ends ----------------------------------
+
+
+async def test_relative_start_counts_from_now(env):
+    rows = build_preview(*env, "kids +30m 1h 25\nheater now 45m", NOW)
+    assert all(r.ok for r in rows), [r.errors for r in rows]
+    assert rows[0].start_at == NOW + timedelta(minutes=30)
+    assert rows[0].end_at == NOW + timedelta(minutes=90)
+    assert rows[0].relative and not rows[0].warnings
+    assert rows[1].start_at == NOW and rows[1].relative
+
+
+async def test_clock_start_is_not_relative(env):
+    rows = build_preview(*env, "kids 01:00 1h", NOW)
+    assert rows[0].relative is False
+
+
+async def test_clock_end_after_clock_start(env):
+    rows = build_preview(*env, "kids 01:00 02:30 25\nkids 23:30-00:15", NOW)
+    assert rows[0].ok and rows[0].end_at == datetime(2026, 11, 8, 2, 30, tzinfo=TZ)
+    assert rows[0].values["temp"] == 25
+    assert rows[1].start_at == datetime(2026, 11, 7, 23, 30, tzinfo=TZ)
+    assert rows[1].end_at == datetime(2026, 11, 8, 0, 15, tzinfo=TZ)
+
+
+async def test_clock_end_after_relative_start(env):
+    rows = build_preview(*env, "heater +10m-21:05\nheater now 22:00", NOW)
+    # 21:10 start: the first 21:05 after it is tomorrow's.
+    assert rows[0].end_at == datetime(2026, 11, 8, 21, 5, tzinfo=TZ)
+    assert "long_block" in codes(rows[0].warnings)
+    assert rows[1].end_at == datetime(2026, 11, 7, 22, 0, tzinfo=TZ)
+    assert rows[1].ok and codes(rows[1].warnings) == ["overlap"]  # same heater as line 1
+
+
+async def test_clock_end_equal_to_start_errors(env):
+    rows = build_preview(*env, "kids 01:00-01:00", NOW)
+    assert codes(rows[0].errors) == ["end_is_start"]
+
+
+async def test_clock_end_on_start_only_errors(env):
+    rows = build_preview(*env, "boiler 05:30 06:00\nboiler now-06:00", NOW)
+    assert codes(rows[0].errors) == ["duration_without_end"]
+    assert codes(rows[1].errors) == ["duration_without_end"]
+
+
+async def test_clock_end_in_dst_gap_warns(env):
+    # 2027-03-26 02:00 jumps to 03:00.
+    night = datetime(2027, 3, 25, 23, 0, tzinfo=TZ)
+    rows = build_preview(*env, "heater 01:00 02:30", night)
+    assert rows[0].ok and codes(rows[0].warnings) == ["nonexistent_time"]
+    assert rows[0].end_at == datetime(2027, 3, 26, 3, 30, tzinfo=TZ)
