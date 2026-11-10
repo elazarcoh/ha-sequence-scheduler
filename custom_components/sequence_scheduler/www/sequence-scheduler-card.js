@@ -41,15 +41,15 @@ const ht=t=>(e,s)=>{void 0!==s?s.addInitializer(()=>{customElements.define(t,e)}
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */class _t{constructor(t){this.hass=t}async listTemplates(){return(await this.hass.callWS({type:"sequence_scheduler/templates/list"})).templates}async saveTemplate(t){return(await this.hass.callWS({type:"sequence_scheduler/templates/save",template:t})).template}async deleteTemplate(t){await this.hass.callWS({type:"sequence_scheduler/templates/delete",template_id:t})}preview(t){return this.hass.callWS({type:"sequence_scheduler/preview",text:t})}queue(t,e,s){return this.hass.callWS({type:"sequence_scheduler/queue",text:t,now:e,token:s})}async cancel(t,e){await this.hass.callWS({type:"sequence_scheduler/queue/cancel",block_id:t,run_end:e})}subscribeQueue(t){return this.hass.connection.subscribeMessage(e=>t(e.blocks),{type:"sequence_scheduler/queue/subscribe"})}}function mt(t,e){const s=new Intl.DateTimeFormat("en-GB",{timeZone:e,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}),i=Object.fromEntries(s.formatToParts(new Date(t)).map(t=>[t.type,t.value]));return{day:`${i.year}-${i.month}-${i.day}`,time:`${i.hour}:${i.minute}`}}function vt(t,e){return mt(t,e).time}const $t=/^([01]?\d|2[0-3]):([0-5]\d)$/,gt=[/^\d+(\.\d+)?h$/i,/^\d+m$/i,/^\d+h\d{1,2}m?$/i],yt=t=>gt.some(e=>e.test(t));function ft(t){const e=t.resolved_options??t.options,s=String(t.default);return e&&e.length?`${t.key} (${s}: ${e.join(" / ")})`:`${t.key} (${s})`}function bt(t,e){const s=t.trimStart();if(!s||s.startsWith("#"))return null;const i=s.split(/\s+/).filter(Boolean),r=1===i.length&&!/\s$/.test(s),o=i[0].toLocaleLowerCase();if(r){const t=e.map(t=>t.key).filter(t=>t.toLocaleLowerCase().startsWith(o));return t.length?t.join(" · "):"unknown template"}const n=e.find(t=>t.key.toLocaleLowerCase()===o);if(!n)return"unknown template";if(i.length<2)return null;const a=function(t){const[e,...s]=t.split("-");return!($t.test(e)||"now"===e.toLowerCase()||e.startsWith("+")&&yt(e.slice(1)))||s.length>1?{ok:!1,range:!1}:1===s.length?{ok:$t.test(s[0]),range:!0}:{ok:!0,range:!1}}(i[1]);if(!a.ok)return null;let l=i.slice(2);!a.range&&l.length&&(yt(l[0])||$t.test(l[0]))&&(l=l.slice(1));const h=new Set(l.filter(t=>t.includes("=")).map(t=>t.split("=",1)[0].toLocaleLowerCase())),d=l.filter(t=>!t.includes("=")).length,c=n.placeholders.filter((t,e)=>e>=d&&!h.has(t.key.toLocaleLowerCase()));return c.length?c.map(ft).join(" · "):null}const xt="Sequence Scheduler",wt="Queue",kt="Templates",At="Only an administrator can use the Sequence Scheduler.",St=t=>`Queue ${t}`,Et="from Queue press",Ct="start failed",qt="start skipped",Pt=t=>`fix ${t}`,Tt=t=>`Queued ${t}`,Ot=t=>`Not queued: ${t.join("; ")}`,Rt="Something changed. Check the list and queue again.",Ut="Nothing queued.",jt="Cancel",Mt="running",Ht="Turn it off now?",Nt="Run the end now",Lt="Just cancel",zt="Keep it",Dt="Add template",It="Edit",Wt="Delete",Bt=t=>`Delete "${t}"? Already queued plans keep running.`,Ft="Save",Qt="Close",Vt="Short name",Jt="Display name",Kt="Start",Zt="End",Gt="No end (start only)",Xt="Add action",Yt="Remove",te="Placeholders",ee="Add placeholder",se="Name",ie="Field",re="Default",oe="No templates yet.";let ne=class extends at{constructor(){super(...arguments),this.hass=null,this._text="",this._preview=null,this._templates=[],this._hint=null,this._message="",this._busy=!1,this._timer=null,this._seq=0,this._loadedFor=null}firstUpdated(){this._textarea.addEventListener("input",t=>this._onInput(t)),this._textarea.addEventListener("click",()=>this._updateHint()),this._textarea.addEventListener("keyup",()=>this._updateHint())}updated(){this.hass&&this._loadedFor!==this.hass&&0===this._templates.length&&(this._loadedFor=this.hass,this._loadTemplates())}disconnectedCallback(){super.disconnectedCallback(),this._timer&&clearTimeout(this._timer)}async _loadTemplates(){try{this._templates=await new _t(this.hass).listTemplates(),this._updateHint()}catch{}}_onInput(t){this._text=t.target.value,this._message="",this._updateHint(),this._timer&&clearTimeout(this._timer),this._timer=setTimeout(()=>this._runPreview(),300)}_updateHint(){const t=this._textarea,e=t?.selectionStart??this._text.length,s=this._text.slice(0,e).lastIndexOf("\n")+1,i=this._text.indexOf("\n",e),r=this._text.slice(s,-1===i?void 0:i);this._hint=bt(r,this._templates)}async _runPreview(){this._timer=null;const t=++this._seq;if(this._text.trim())try{const e=await new _t(this.hass).preview(this._text);t===this._seq&&(this._preview=e)}catch(e){t===this._seq&&(this._message=e?.message??String(e))}else this._preview=null}get _counts(){const t=this._preview?.rows??[];return{ok:t.filter(t=>t.ok).length,bad:t.filter(t=>!t.ok).length}}async _queue(){const t=this._preview;if(t&&!this._busy){this._busy=!0;try{const{queued:e,refused:s=[]}=await new _t(this.hass).queue(this._text,t.now,t.token);this._text=s.map(t=>t.raw).join("\n"),this._preview=null,this._hint=null,this._textarea&&(this._textarea.value=this._text);const i=t=>t.errors.map(t=>t.detail.replace(/^line \d+: /,"")).join(", ");this._message=s.length?`${Tt(e)}. ${Ot(s.map(t=>`${t.raw} (${i(t)})`))}`:Tt(e),s.length&&await this._runPreview()}catch(t){"preview_changed"===t?.code?(await this._runPreview(),this._message=Rt):this._message=t?.message??String(t)}finally{this._busy=!1}}}_row(t){const e=this.hass?.config?.time_zone,s=this._preview.now,i=t.relative?"≈":"",r=t.start_at?i+(t.end_at?`${vt(t.start_at,e)}–${vt(t.end_at,e)}`:vt(t.start_at,e)):"--:--";return W`<div class="row">
+ */class _t{constructor(t){this.hass=t}async listTemplates(){return(await this.hass.callWS({type:"sequence_scheduler/templates/list"})).templates}async saveTemplate(t){return(await this.hass.callWS({type:"sequence_scheduler/templates/save",template:t})).template}async deleteTemplate(t){await this.hass.callWS({type:"sequence_scheduler/templates/delete",template_id:t})}preview(t){return this.hass.callWS({type:"sequence_scheduler/preview",text:t})}queue(t,e,s){return this.hass.callWS({type:"sequence_scheduler/queue",text:t,now:e,token:s})}async cancel(t,e){await this.hass.callWS({type:"sequence_scheduler/queue/cancel",block_id:t,run_end:e})}subscribeQueue(t){return this.hass.connection.subscribeMessage(e=>t(e.blocks),{type:"sequence_scheduler/queue/subscribe"})}}function mt(t,e){const s=new Intl.DateTimeFormat("en-GB",{timeZone:e,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}),i=Object.fromEntries(s.formatToParts(new Date(t)).map(t=>[t.type,t.value]));return{day:`${i.year}-${i.month}-${i.day}`,time:`${i.hour}:${i.minute}`}}function vt(t,e){return mt(t,e).time}const $t=/^([01]?\d|2[0-3]):([0-5]\d)$/,gt=/^([01]?\d|2[0-3])([0-5]\d)$/,yt=/^(0?[1-9]|1[0-2])(:?[0-5]\d)?(am|pm)$/i,ft=(t,e=!0)=>$t.test(t)||yt.test(t)||e&&gt.test(t),bt=[/^\d+(\.\d+)?h$/i,/^\d+m$/i,/^\d+h\d{1,2}m?$/i],xt=t=>bt.some(e=>e.test(t));function wt(t){const e=t.resolved_options??t.options,s=String(t.default);return e&&e.length?`${t.key} (${s}: ${e.join(" / ")})`:`${t.key} (${s})`}function kt(t,e){const s=t.trimStart();if(!s||s.startsWith("#"))return null;const i=s.split(/\s+/).filter(Boolean),r=1===i.length&&!/\s$/.test(s),o=i[0].toLocaleLowerCase();if(r){const t=e.map(t=>t.key).filter(t=>t.toLocaleLowerCase().startsWith(o));return t.length?t.join(" · "):"unknown template"}const n=e.find(t=>t.key.toLocaleLowerCase()===o);if(!n)return"unknown template";if(i.length<2)return null;const a=function(t){const[e,...s]=t.split("-");return!(ft(e)||"now"===e.toLowerCase()||e.startsWith("+")&&xt(e.slice(1)))||s.length>1?{ok:!1,range:!1}:1===s.length?{ok:ft(s[0]),range:!0}:{ok:!0,range:!1}}(i[1]);if(!a.ok)return null;let l=i.slice(2);!a.range&&l.length&&(xt(l[0])||ft(l[0],!1))&&(l=l.slice(1));const h=new Set(l.filter(t=>t.includes("=")).map(t=>t.split("=",1)[0].toLocaleLowerCase())),d=l.filter(t=>!t.includes("=")).length,c=n.placeholders.filter((t,e)=>e>=d&&!h.has(t.key.toLocaleLowerCase()));return c.length?c.map(wt).join(" · "):null}const At="Sequence Scheduler",St="Queue",Et="Templates",Ct="Only an administrator can use the Sequence Scheduler.",qt=t=>`Queue ${t}`,Pt="from Queue press",Tt="start failed",Ot="start skipped",Rt=t=>`fix ${t}`,Ut=t=>`Queued ${t}`,jt=t=>`Not queued: ${t.join("; ")}`,Mt="Something changed. Check the list and queue again.",Ht="Nothing queued.",Nt="Cancel",Lt="running",zt="Turn it off now?",Dt="Run the end now",It="Just cancel",Wt="Keep it",Bt="Add template",Ft="Edit",Qt="Delete",Vt=t=>`Delete "${t}"? Already queued plans keep running.`,Jt="Save",Kt="Close",Zt="Short name",Gt="Display name",Xt="Start",Yt="End",te="No end (start only)",ee="Add action",se="Remove",ie="Placeholders",re="Add placeholder",oe="Name",ne="Field",ae="Default",le="No templates yet.";let he=class extends at{constructor(){super(...arguments),this.hass=null,this._text="",this._preview=null,this._templates=[],this._hint=null,this._message="",this._busy=!1,this._timer=null,this._seq=0,this._loadedFor=null}firstUpdated(){this._textarea.addEventListener("input",t=>this._onInput(t)),this._textarea.addEventListener("click",()=>this._updateHint()),this._textarea.addEventListener("keyup",()=>this._updateHint())}updated(){this.hass&&this._loadedFor!==this.hass&&0===this._templates.length&&(this._loadedFor=this.hass,this._loadTemplates())}disconnectedCallback(){super.disconnectedCallback(),this._timer&&clearTimeout(this._timer)}async _loadTemplates(){try{this._templates=await new _t(this.hass).listTemplates(),this._updateHint()}catch{}}_onInput(t){this._text=t.target.value,this._message="",this._updateHint(),this._timer&&clearTimeout(this._timer),this._timer=setTimeout(()=>this._runPreview(),300)}_updateHint(){const t=this._textarea,e=t?.selectionStart??this._text.length,s=this._text.slice(0,e).lastIndexOf("\n")+1,i=this._text.indexOf("\n",e),r=this._text.slice(s,-1===i?void 0:i);this._hint=kt(r,this._templates)}async _runPreview(){this._timer=null;const t=++this._seq;if(this._text.trim())try{const e=await new _t(this.hass).preview(this._text);t===this._seq&&(this._preview=e)}catch(e){t===this._seq&&(this._message=e?.message??String(e))}else this._preview=null}get _counts(){const t=this._preview?.rows??[];return{ok:t.filter(t=>t.ok).length,bad:t.filter(t=>!t.ok).length}}async _queue(){const t=this._preview;if(t&&!this._busy){this._busy=!0;try{const{queued:e,refused:s=[]}=await new _t(this.hass).queue(this._text,t.now,t.token);this._text=s.map(t=>t.raw).join("\n"),this._preview=null,this._hint=null,this._textarea&&(this._textarea.value=this._text);const i=t=>t.errors.map(t=>t.detail.replace(/^line \d+: /,"")).join(", ");this._message=s.length?`${Ut(e)}. ${jt(s.map(t=>`${t.raw} (${i(t)})`))}`:Ut(e),s.length&&await this._runPreview()}catch(t){"preview_changed"===t?.code?(await this._runPreview(),this._message=Mt):this._message=t?.message??String(t)}finally{this._busy=!1}}}_row(t){const e=this.hass?.config?.time_zone,s=this._preview.now,i=t.relative?"≈":"",r=t.start_at?i+(t.end_at?`${vt(t.start_at,e)}–${vt(t.end_at,e)}`:vt(t.start_at,e)):"--:--";return W`<div class="row">
       <span class="time" dir="ltr">${r}</span>
-      ${t.start_at?W`<span class="day">${t.relative?Et:function(t,e,s){const i=mt(t,s).day;return i===mt(e,s).day?"today":i===mt(new Date(new Date(e).getTime()+864e5).toISOString(),s).day?"tomorrow":i}(t.start_at,s,e)}</span>`:F}
+      ${t.start_at?W`<span class="day">${t.relative?Pt:function(t,e,s){const i=mt(t,s).day;return i===mt(e,s).day?"today":i===mt(new Date(new Date(e).getTime()+864e5).toISOString(),s).day?"tomorrow":i}(t.start_at,s,e)}</span>`:F}
       <span class="name" dir="auto">${t.template_name??t.raw}</span>
       <span class="values" dir="auto">${o=t.values,Object.values(o).map(String).join(" · ")}</span>
       ${t.ok?W`<span class="ok">✓</span>`:F}
       ${t.errors.map(t=>W`<span class="error" dir="auto">${t.detail}</span>`)}
       ${t.warnings.map(t=>W`<span class="warning" dir="auto">${t.detail}</span>`)}
-    </div>`;var o}render(){const{ok:t,bad:e}=this._counts,s=e?`${St(t)} · ${Pt(e)}`:St(t);return W`
+    </div>`;var o}render(){const{ok:t,bad:e}=this._counts,s=e?`${qt(t)} · ${Rt(e)}`:qt(t);return W`
       <!-- No Lit bindings on the textarea: listeners are attached in
            firstUpdated and the value is read and cleared on the element. -->
       <textarea dir="auto" spellcheck="false" autocapitalize="off" placeholder="kids 01:00 1h 25"></textarea>
@@ -59,7 +59,7 @@ const ht=t=>(e,s)=>{void 0!==s?s.addInitializer(()=>{customElements.define(t,e)}
         <span class="message">${this._message}</span>
         <button class="queue" ?disabled=${0===t||this._busy} @click=${this._queue}>${s}</button>
       </div>
-    `}};ne.styles=n`
+    `}};he.styles=n`
     textarea {
       width: 100%;
       box-sizing: border-box;
@@ -135,29 +135,29 @@ const ht=t=>(e,s)=>{void 0!==s?s.addInitializer(()=>{customElements.define(t,e)}
     .message {
       color: var(--secondary-text-color);
     }
-  `,t([pt({attribute:!1})],ne.prototype,"hass",void 0),t([ut()],ne.prototype,"_text",void 0),t([ut()],ne.prototype,"_preview",void 0),t([ut()],ne.prototype,"_templates",void 0),t([ut()],ne.prototype,"_hint",void 0),t([ut()],ne.prototype,"_message",void 0),t([ut()],ne.prototype,"_busy",void 0),t([
+  `,t([pt({attribute:!1})],he.prototype,"hass",void 0),t([ut()],he.prototype,"_text",void 0),t([ut()],he.prototype,"_preview",void 0),t([ut()],he.prototype,"_templates",void 0),t([ut()],he.prototype,"_hint",void 0),t([ut()],he.prototype,"_message",void 0),t([ut()],he.prototype,"_busy",void 0),t([
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.decorate&&"object"!=typeof e&&Object.defineProperty(t,e,s),s))(e,s,{get(){return(e=>e.renderRoot?.querySelector(t)??null)(this)}})}("textarea")],ne.prototype,"_textarea",void 0),ne=t([ht("seq-queue-entry")],ne);let ae=class extends at{constructor(){super(...arguments),this.hass=null,this._blocks=null,this._asking=null,this._error="",this._unsub=null,this._subscribedTo=null}updated(){this.hass&&this.isConnected&&this._subscribedTo!==this.hass&&!this._unsub&&(this._subscribedTo=this.hass,this._subscribe())}connectedCallback(){super.connectedCallback(),this.hass&&!this._unsub&&this._subscribe()}disconnectedCallback(){super.disconnectedCallback();const t=this._unsub;this._unsub=null,this._subscribedTo=null,t&&t()}async _subscribe(){this._subscribedTo=this.hass;try{const t=await new _t(this.hass).subscribeQueue(t=>this._blocks=t);this.isConnected?this._unsub=t:t()}catch(t){this._error=t?.message??String(t)}}_startState(t){const e=t.start_detail?`: ${t.start_detail}`:"";return"failed"===t.start_outcome?`${Ct}${e}`:t.start_outcome?.startsWith("skipped")?`${qt}${e}`:Mt}_isRunning(t){return!t.steps.some(t=>"start"===t.phase)&&t.steps.some(t=>"end"===t.phase)}_onCancel(t){this._isRunning(t)?this._asking=t.id:this._cancel(t.id,!1)}async _cancel(t,e){this._asking=null;try{await new _t(this.hass).cancel(t,e)}catch(t){this._error=t?.message??String(t)}}_steps(t){const e=this.hass?.config?.time_zone;return(this._isRunning(t)?`${this._startState(t)} · `:"")+t.steps.map(t=>`${"start"===t.phase?"start":"end"} ${vt(t.at,e)}${"in_progress"===t.state?` (${Mt})`:""}`).join(" · ")}_block(t){return W`<div class="block">
+function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.decorate&&"object"!=typeof e&&Object.defineProperty(t,e,s),s))(e,s,{get(){return(e=>e.renderRoot?.querySelector(t)??null)(this)}})}("textarea")],he.prototype,"_textarea",void 0),he=t([ht("seq-queue-entry")],he);let de=class extends at{constructor(){super(...arguments),this.hass=null,this._blocks=null,this._asking=null,this._error="",this._unsub=null,this._subscribedTo=null}updated(){this.hass&&this.isConnected&&this._subscribedTo!==this.hass&&!this._unsub&&(this._subscribedTo=this.hass,this._subscribe())}connectedCallback(){super.connectedCallback(),this.hass&&!this._unsub&&this._subscribe()}disconnectedCallback(){super.disconnectedCallback();const t=this._unsub;this._unsub=null,this._subscribedTo=null,t&&t()}async _subscribe(){this._subscribedTo=this.hass;try{const t=await new _t(this.hass).subscribeQueue(t=>this._blocks=t);this.isConnected?this._unsub=t:t()}catch(t){this._error=t?.message??String(t)}}_startState(t){const e=t.start_detail?`: ${t.start_detail}`:"";return"failed"===t.start_outcome?`${Tt}${e}`:t.start_outcome?.startsWith("skipped")?`${Ot}${e}`:Lt}_isRunning(t){return!t.steps.some(t=>"start"===t.phase)&&t.steps.some(t=>"end"===t.phase)}_onCancel(t){this._isRunning(t)?this._asking=t.id:this._cancel(t.id,!1)}async _cancel(t,e){this._asking=null;try{await new _t(this.hass).cancel(t,e)}catch(t){this._error=t?.message??String(t)}}_steps(t){const e=this.hass?.config?.time_zone;return(this._isRunning(t)?`${this._startState(t)} · `:"")+t.steps.map(t=>`${"start"===t.phase?"start":"end"} ${vt(t.at,e)}${"in_progress"===t.state?` (${Lt})`:""}`).join(" · ")}_block(t){return W`<div class="block">
       <div class="head">
         <span class="line" dir="auto">${t.line}</span>
-        <button class="cancel" @click=${()=>this._onCancel(t)}>${jt}</button>
+        <button class="cancel" @click=${()=>this._onCancel(t)}>${Nt}</button>
       </div>
       <div class="name" dir="auto">${t.template_name}</div>
       <div class="steps" dir="ltr">${this._steps(t)}</div>
       ${this._asking===t.id?W`<div class="ask">
-            <span>${Ht}</span>
-            <button class="run-end" @click=${()=>this._cancel(t.id,!0)}>${Nt}</button>
-            <button class="just-cancel" @click=${()=>this._cancel(t.id,!1)}>${Lt}</button>
-            <button class="keep" @click=${()=>this._asking=null}>${zt}</button>
+            <span>${zt}</span>
+            <button class="run-end" @click=${()=>this._cancel(t.id,!0)}>${Dt}</button>
+            <button class="just-cancel" @click=${()=>this._cancel(t.id,!1)}>${It}</button>
+            <button class="keep" @click=${()=>this._asking=null}>${Wt}</button>
           </div>`:F}
     </div>`}render(){return W`<div class="list">
       ${this._error?W`<div class="error">${this._error}</div>`:F}
-      ${null===this._blocks?F:0===this._blocks.length?W`<div class="empty">${Ut}</div>`:this._blocks.map(t=>this._block(t))}
-    </div>`}};function le(t,e){if(t){if(t[e])return t[e];for(const s of Object.values(t))if(s&&"object"==typeof s&&s.fields){const t=le(s.fields,e);if(t)return t}}}function he(t,e,s){const[i,r]=e.split(".",2),o=le(t?.services?.[i]?.[r]?.fields,s)?.selector??{};if(o.number){const t={kind:s.endsWith("_pct")?"percent":"number"};return"number"==typeof o.number.min&&(t.min=o.number.min),"number"==typeof o.number.max&&(t.max=o.number.max),t}return o.select?.options?.length?{kind:"select",options:o.select.options.map(t=>String("object"==typeof t?t.value:t))}:s.endsWith("_mode")?{kind:"select"}:{kind:"text"}}ae.styles=n`
+      ${null===this._blocks?F:0===this._blocks.length?W`<div class="empty">${Ht}</div>`:this._blocks.map(t=>this._block(t))}
+    </div>`}};function ce(t,e){if(t){if(t[e])return t[e];for(const s of Object.values(t))if(s&&"object"==typeof s&&s.fields){const t=ce(s.fields,e);if(t)return t}}}function pe(t,e,s){const[i,r]=e.split(".",2),o=ce(t?.services?.[i]?.[r]?.fields,s)?.selector??{};if(o.number){const t={kind:s.endsWith("_pct")?"percent":"number"};return"number"==typeof o.number.min&&(t.min=o.number.min),"number"==typeof o.number.max&&(t.max=o.number.max),t}return o.select?.options?.length?{kind:"select",options:o.select.options.map(t=>String("object"==typeof t?t.value:t))}:s.endsWith("_mode")?{kind:"select"}:{kind:"text"}}de.styles=n`
     .block {
       border: 1px solid var(--divider-color);
       border-radius: 8px;
@@ -202,21 +202,21 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
       color: var(--secondary-text-color);
       padding: 8px 0;
     }
-  `,t([pt({attribute:!1})],ae.prototype,"hass",void 0),t([ut()],ae.prototype,"_blocks",void 0),t([ut()],ae.prototype,"_asking",void 0),t([ut()],ae.prototype,"_error",void 0),ae=t([ht("seq-queue-list")],ae);let de=class extends at{constructor(){super(...arguments),this.hass=null,this.actions=[],this.value=[]}get _fields(){const t=[];for(const e of this.actions)for(const s of Object.keys(e.data??{}))t.includes(s)||t.push(s);return t}_emit(t){this.dispatchEvent(new CustomEvent("placeholders-changed",{detail:{value:t}}))}_update(t,e){this._emit(this.value.map((s,i)=>i===t?{...s,...e}:s))}_onField(t,e){const s=this.actions.find(t=>t.data&&e in t.data),i=s?he(this.hass,s.action,e):{kind:"text"},r=s?.data[e],o=this.value[t];this._update(t,{field:e,key:o.key||e,kind:i.kind,min:i.min??null,max:i.max??null,options:i.options??null,default:"number"===i.kind||"percent"===i.kind?Number(r):void 0===r?"":String(r)})}_onDefault(t,e){const s=this.value[t];this._update(t,{default:"number"===s.kind||"percent"===s.kind?Number(e):e})}render(){const t=this._fields;return W`<div class="rows">
+  `,t([pt({attribute:!1})],de.prototype,"hass",void 0),t([ut()],de.prototype,"_blocks",void 0),t([ut()],de.prototype,"_asking",void 0),t([ut()],de.prototype,"_error",void 0),de=t([ht("seq-queue-list")],de);let ue=class extends at{constructor(){super(...arguments),this.hass=null,this.actions=[],this.value=[]}get _fields(){const t=[];for(const e of this.actions)for(const s of Object.keys(e.data??{}))t.includes(s)||t.push(s);return t}_emit(t){this.dispatchEvent(new CustomEvent("placeholders-changed",{detail:{value:t}}))}_update(t,e){this._emit(this.value.map((s,i)=>i===t?{...s,...e}:s))}_onField(t,e){const s=this.actions.find(t=>t.data&&e in t.data),i=s?pe(this.hass,s.action,e):{kind:"text"},r=s?.data[e],o=this.value[t];this._update(t,{field:e,key:o.key||e,kind:i.kind,min:i.min??null,max:i.max??null,options:i.options??null,default:"number"===i.kind||"percent"===i.kind?Number(r):void 0===r?"":String(r)})}_onDefault(t,e){const s=this.value[t];this._update(t,{default:"number"===s.kind||"percent"===s.kind?Number(e):e})}render(){const t=this._fields;return W`<div class="rows">
       ${this.value.map((e,s)=>W`<div class="row">
-          <input class="key" dir="auto" .value=${e.key} placeholder=${se}
+          <input class="key" dir="auto" .value=${e.key} placeholder=${oe}
             @change=${t=>this._update(s,{key:t.target.value.trim()})} />
           <select class="field" @change=${t=>this._onField(s,t.target.value)}>
-            <option value="" ?selected=${!e.field}>${ie}</option>
+            <option value="" ?selected=${!e.field}>${ne}</option>
             ${t.map(t=>W`<option value=${t} ?selected=${t===e.field}>${t}</option>`)}
           </select>
           <span class="kind">${e.kind}</span>
-          <input class="default" dir="auto" .value=${String(e.default??"")} placeholder=${re}
+          <input class="default" dir="auto" .value=${String(e.default??"")} placeholder=${ae}
             @change=${t=>this._onDefault(s,t.target.value)} />
           <button class="remove" @click=${()=>this._emit(this.value.filter((t,e)=>e!==s))}>×</button>
         </div>`)}
-      <button class="add" @click=${()=>this._emit([...this.value,{key:"",field:"",kind:"text",default:"",min:null,max:null,options:null}])}>${ee}</button>
-    </div>`}};de.styles=n`
+      <button class="add" @click=${()=>this._emit([...this.value,{key:"",field:"",kind:"text",default:"",min:null,max:null,options:null}])}>${re}</button>
+    </div>`}};ue.styles=n`
     .row {
       display: grid;
       grid-template-columns: 1fr 1.3fr auto 1fr auto;
@@ -247,7 +247,7 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
       padding: 4px 8px;
       cursor: pointer;
     }
-  `,t([pt({attribute:!1})],de.prototype,"hass",void 0),t([pt({attribute:!1})],de.prototype,"actions",void 0),t([pt({attribute:!1})],de.prototype,"value",void 0),de=t([ht("seq-placeholder-editor")],de);let ce=class extends at{constructor(){super(...arguments),this.hass=null,this.action="",this.data={},this.target=null,this.disabled=!1,this._onChange=t=>{const e=t.detail?.value??{},s={action:"string"==typeof e.action?e.action:""};"object"==typeof e.data&&null!==e.data&&(s.data=e.data),this.dispatchEvent(new CustomEvent("service-changed",{detail:s}))},this._observer=null}render(){return W`
+  `,t([pt({attribute:!1})],ue.prototype,"hass",void 0),t([pt({attribute:!1})],ue.prototype,"actions",void 0),t([pt({attribute:!1})],ue.prototype,"value",void 0),ue=t([ht("seq-placeholder-editor")],ue);let _e=class extends at{constructor(){super(...arguments),this.hass=null,this.action="",this.data={},this.target=null,this.disabled=!1,this._onChange=t=>{const e=t.detail?.value??{},s={action:"string"==typeof e.action?e.action:""};"object"==typeof e.data&&null!==e.data&&(s.data=e.data),this.dispatchEvent(new CustomEvent("service-changed",{detail:s}))},this._observer=null}render(){return W`
       <div class="wrap">
         <!-- No \`showAdvanced\`. It was passed here for a while, first
              hard-coded true and then following the user's own preference -
@@ -265,19 +265,19 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
           @value-changed=${this._onChange}
         ></ha-service-control>
       </div>
-    `}get _control(){return this.shadowRoot?.querySelector("ha-service-control")??null}async updated(){const t=this._control;t?.updateComplete&&await t.updateComplete,this.suppressTargetRows(),this._watch()}disconnectedCallback(){super.disconnectedCallback(),this._observer?.disconnect(),this._observer=null}_watch(){const t=this._control?.shadowRoot;!this._observer&&t&&(this._observer=new MutationObserver(()=>this.suppressTargetRows()),this._observer.observe(t,{childList:!0}))}suppressTargetRows(){const t=this._control?.shadowRoot;if(!t)return 0;const e=[...t.querySelectorAll("ha-selector")].filter(t=>{const e=t.selector;return"object"==typeof e&&null!==e&&"target"in e});for(const t of e)t.style.setProperty("display","none","important");return this.setAttribute("data-target-rows-suppressed",String(e.length)),e.length}};ce.styles=n`
+    `}get _control(){return this.shadowRoot?.querySelector("ha-service-control")??null}async updated(){const t=this._control;t?.updateComplete&&await t.updateComplete,this.suppressTargetRows(),this._watch()}disconnectedCallback(){super.disconnectedCallback(),this._observer?.disconnect(),this._observer=null}_watch(){const t=this._control?.shadowRoot;!this._observer&&t&&(this._observer=new MutationObserver(()=>this.suppressTargetRows()),this._observer.observe(t,{childList:!0}))}suppressTargetRows(){const t=this._control?.shadowRoot;if(!t)return 0;const e=[...t.querySelectorAll("ha-selector")].filter(t=>{const e=t.selector;return"object"==typeof e&&null!==e&&"target"in e});for(const t of e)t.style.setProperty("display","none","important");return this.setAttribute("data-target-rows-suppressed",String(e.length)),e.length}};_e.styles=n`
     :host { display: block; }
-  `,t([pt({attribute:!1})],ce.prototype,"hass",void 0),t([pt()],ce.prototype,"action",void 0),t([pt({attribute:!1})],ce.prototype,"data",void 0),t([pt({attribute:!1})],ce.prototype,"target",void 0),t([pt({type:Boolean})],ce.prototype,"disabled",void 0),ce=t([ht("seq-service-editor")],ce);let pe=class extends at{constructor(){super(...arguments),this.hass=null,this.value={},this.disabled=!1,this._onChange=t=>{const e=t.detail?.value??{};this.dispatchEvent(new CustomEvent("target-changed",{detail:{value:e}}))}}render(){return W`<ha-selector
+  `,t([pt({attribute:!1})],_e.prototype,"hass",void 0),t([pt()],_e.prototype,"action",void 0),t([pt({attribute:!1})],_e.prototype,"data",void 0),t([pt({attribute:!1})],_e.prototype,"target",void 0),t([pt({type:Boolean})],_e.prototype,"disabled",void 0),_e=t([ht("seq-service-editor")],_e);let me=class extends at{constructor(){super(...arguments),this.hass=null,this.value={},this.disabled=!1,this._onChange=t=>{const e=t.detail?.value??{};this.dispatchEvent(new CustomEvent("target-changed",{detail:{value:e}}))}}render(){return W`<ha-selector
       .hass=${this.hass}
       .selector=${{target:{}}}
       .value=${this.value}
       .disabled=${this.disabled}
       @value-changed=${this._onChange}
-    ></ha-selector>`}};pe.styles=n`
+    ></ha-selector>`}};me.styles=n`
     :host {
       display: block;
     }
-  `,t([pt({attribute:!1})],pe.prototype,"hass",void 0),t([pt({attribute:!1})],pe.prototype,"value",void 0),t([pt({type:Boolean})],pe.prototype,"disabled",void 0),pe=t([ht("seq-target-editor")],pe);const ue=(t={})=>({action:"",target:{...t},data:{}}),_e=t=>({action:t.action,target:{...t.target},data:{...t.data}});let me=class extends at{constructor(){super(...arguments),this.hass=null,this.template=null,this._key="",this._name="",this._start=[ue()],this._end=[ue()],this._noEnd=!1,this._placeholders=[],this._error="",this._busy=!1,this._loaded=void 0}willUpdate(){if(this._loaded===this.template)return;this._loaded=this.template;const t=this.template;t&&(this._key=t.key,this._name=t.name,this._start=t.start.length?t.start.map(_e):[ue()],this._end=t.end.length?t.end.map(_e):[ue(this._start[0].target)],this._noEnd=0===t.end.length,this._placeholders=t.placeholders.map(t=>({...t})))}_list(t){return"start"===t?this._start:this._end}_set(t,e){if("start"===t){const t=this._end[0],s=1===this._end.length&&!t.action&&0===Object.keys(t.target).length;this._start=e,s&&e[0]&&(this._end=[ue(e[0].target)])}else this._end=e}_patch(t,e,s){this._set(t,this._list(t).map((t,i)=>i===e?{...t,...s}:t))}_add(t){const e=this._list(t),s=e[e.length-1]??this._start[this._start.length-1];this._set(t,[...e,ue(s?.target??{})])}_remove(t,e){const s=this._list(t).filter((t,s)=>s!==e);this._set(t,s.length?s:[ue()])}_onService(t,e,s){const i={action:s.detail.action};void 0!==s.detail.data?i.data=s.detail.data:s.detail.action!==this._list(t)[e].action&&(i.data={}),this._patch(t,e,i)}async _save(){this._busy=!0,this._error="";const t={...this.template?{id:this.template.id}:{},key:this._key.trim(),name:this._name.trim()||this._key.trim(),start:this._start.map(_e),end:this._noEnd?[]:this._end.map(_e),placeholders:this._placeholders};try{const e=await new _t(this.hass).saveTemplate(t);this.dispatchEvent(new CustomEvent("saved",{detail:{template:e}}))}catch(t){this._error=t?.message??String(t)}finally{this._busy=!1}}_section(t,e){return W`<div class=${t}>
+  `,t([pt({attribute:!1})],me.prototype,"hass",void 0),t([pt({attribute:!1})],me.prototype,"value",void 0),t([pt({type:Boolean})],me.prototype,"disabled",void 0),me=t([ht("seq-target-editor")],me);const ve=(t={})=>({action:"",target:{...t},data:{}}),$e=t=>({action:t.action,target:{...t.target},data:{...t.data}});let ge=class extends at{constructor(){super(...arguments),this.hass=null,this.template=null,this._key="",this._name="",this._start=[ve()],this._end=[ve()],this._noEnd=!1,this._placeholders=[],this._error="",this._busy=!1,this._loaded=void 0}willUpdate(){if(this._loaded===this.template)return;this._loaded=this.template;const t=this.template;t&&(this._key=t.key,this._name=t.name,this._start=t.start.length?t.start.map($e):[ve()],this._end=t.end.length?t.end.map($e):[ve(this._start[0].target)],this._noEnd=0===t.end.length,this._placeholders=t.placeholders.map(t=>({...t})))}_list(t){return"start"===t?this._start:this._end}_set(t,e){if("start"===t){const t=this._end[0],s=1===this._end.length&&!t.action&&0===Object.keys(t.target).length;this._start=e,s&&e[0]&&(this._end=[ve(e[0].target)])}else this._end=e}_patch(t,e,s){this._set(t,this._list(t).map((t,i)=>i===e?{...t,...s}:t))}_add(t){const e=this._list(t),s=e[e.length-1]??this._start[this._start.length-1];this._set(t,[...e,ve(s?.target??{})])}_remove(t,e){const s=this._list(t).filter((t,s)=>s!==e);this._set(t,s.length?s:[ve()])}_onService(t,e,s){const i={action:s.detail.action};void 0!==s.detail.data?i.data=s.detail.data:s.detail.action!==this._list(t)[e].action&&(i.data={}),this._patch(t,e,i)}async _save(){this._busy=!0,this._error="";const t={...this.template?{id:this.template.id}:{},key:this._key.trim(),name:this._name.trim()||this._key.trim(),start:this._start.map($e),end:this._noEnd?[]:this._end.map($e),placeholders:this._placeholders};try{const e=await new _t(this.hass).saveTemplate(t);this.dispatchEvent(new CustomEvent("saved",{detail:{template:e}}))}catch(t){this._error=t?.message??String(t)}finally{this._busy=!1}}_section(t,e){return W`<div class=${t}>
       <h4>${e}</h4>
       ${this._list(t).map((e,s)=>W`<div class="action">
           <seq-target-editor
@@ -292,27 +292,27 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
             .data=${e.data}
             @service-changed=${e=>this._onService(t,s,e)}
           ></seq-service-editor>
-          ${this._list(t).length>1?W`<button class="remove-action" @click=${()=>this._remove(t,s)}>${Yt}</button>`:F}
+          ${this._list(t).length>1?W`<button class="remove-action" @click=${()=>this._remove(t,s)}>${se}</button>`:F}
         </div>`)}
-      <button class="add-action" @click=${()=>this._add(t)}>${Xt}</button>
+      <button class="add-action" @click=${()=>this._add(t)}>${ee}</button>
     </div>`}render(){const t=[...this._start,...this._noEnd?[]:this._end];return W`<div class="form">
-      <label>${Vt}
+      <label>${Zt}
         <input type="text" class="key" dir="auto" .value=${this._key}
           @input=${t=>this._key=t.target.value} />
       </label>
-      <label>${Jt}
+      <label>${Gt}
         <input type="text" class="name" dir="auto" .value=${this._name}
           @input=${t=>this._name=t.target.value} />
       </label>
-      ${this._section("start",Kt)}
-      <h4>${Zt}</h4>
+      ${this._section("start",Xt)}
+      <h4>${Yt}</h4>
       <label class="inline">
         <input type="checkbox" class="no-end" .checked=${this._noEnd}
           @change=${t=>this._noEnd=t.target.checked} />
-        ${Gt}
+        ${te}
       </label>
       ${this._noEnd?F:this._section("end","")}
-      <h4>${te}</h4>
+      <h4>${ie}</h4>
       <seq-placeholder-editor
         .hass=${this.hass}
         .actions=${t}
@@ -321,10 +321,10 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
       ></seq-placeholder-editor>
       ${this._error?W`<div class="error" dir="auto">${this._error}</div>`:F}
       <div class="buttons">
-        <button class="close" @click=${()=>this.dispatchEvent(new CustomEvent("closed"))}>${Qt}</button>
-        <button class="save" ?disabled=${this._busy} @click=${this._save}>${Ft}</button>
+        <button class="close" @click=${()=>this.dispatchEvent(new CustomEvent("closed"))}>${Kt}</button>
+        <button class="save" ?disabled=${this._busy} @click=${this._save}>${Jt}</button>
       </div>
-    </div>`}};me.styles=n`
+    </div>`}};ge.styles=n`
     .form {
       border: 1px solid var(--divider-color);
       border-radius: 10px;
@@ -379,25 +379,25 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
       color: var(--error-color, #c62828);
       margin-top: 8px;
     }
-  `,t([pt({attribute:!1})],me.prototype,"hass",void 0),t([pt({attribute:!1})],me.prototype,"template",void 0),t([ut()],me.prototype,"_key",void 0),t([ut()],me.prototype,"_name",void 0),t([ut()],me.prototype,"_start",void 0),t([ut()],me.prototype,"_end",void 0),t([ut()],me.prototype,"_noEnd",void 0),t([ut()],me.prototype,"_placeholders",void 0),t([ut()],me.prototype,"_error",void 0),t([ut()],me.prototype,"_busy",void 0),me=t([ht("seq-template-dialog")],me);let ve=class extends at{constructor(){super(...arguments),this.hass=null,this._templates=null,this._editing=void 0,this._error="",this._loadedFor=null}updated(){this.hass&&this._loadedFor!==this.hass&&null===this._templates&&(this._loadedFor=this.hass,this._load())}async _load(){try{this._templates=await new _t(this.hass).listTemplates()}catch(t){this._error=t?.message??String(t)}}async _delete(t){if(window.confirm(Bt(t.name)))try{await new _t(this.hass).deleteTemplate(t.id),await this._load()}catch(t){this._error=t?.message??String(t)}}_summary(t){const e=t=>t.map(t=>t.action).join(" + ");return t.end.length?`${e(t.start)} → ${e(t.end)}`:e(t.start)}render(){return W`<div class="list">
+  `,t([pt({attribute:!1})],ge.prototype,"hass",void 0),t([pt({attribute:!1})],ge.prototype,"template",void 0),t([ut()],ge.prototype,"_key",void 0),t([ut()],ge.prototype,"_name",void 0),t([ut()],ge.prototype,"_start",void 0),t([ut()],ge.prototype,"_end",void 0),t([ut()],ge.prototype,"_noEnd",void 0),t([ut()],ge.prototype,"_placeholders",void 0),t([ut()],ge.prototype,"_error",void 0),t([ut()],ge.prototype,"_busy",void 0),ge=t([ht("seq-template-dialog")],ge);let ye=class extends at{constructor(){super(...arguments),this.hass=null,this._templates=null,this._editing=void 0,this._error="",this._loadedFor=null}updated(){this.hass&&this._loadedFor!==this.hass&&null===this._templates&&(this._loadedFor=this.hass,this._load())}async _load(){try{this._templates=await new _t(this.hass).listTemplates()}catch(t){this._error=t?.message??String(t)}}async _delete(t){if(window.confirm(Vt(t.name)))try{await new _t(this.hass).deleteTemplate(t.id),await this._load()}catch(t){this._error=t?.message??String(t)}}_summary(t){const e=t=>t.map(t=>t.action).join(" + ");return t.end.length?`${e(t.start)} → ${e(t.end)}`:e(t.start)}render(){return W`<div class="list">
       ${this._error?W`<div class="error">${this._error}</div>`:F}
       ${void 0!==this._editing?W`<seq-template-dialog
             .hass=${this.hass}
             .template=${this._editing}
             @saved=${async()=>{this._editing=void 0,await this._load()}}
             @closed=${()=>this._editing=void 0}
-          ></seq-template-dialog>`:W`<button class="add-template" @click=${()=>this._editing=null}>${Dt}</button>`}
-      ${0===this._templates?.length?W`<div class="empty">${oe}</div>`:F}
+          ></seq-template-dialog>`:W`<button class="add-template" @click=${()=>this._editing=null}>${Bt}</button>`}
+      ${0===this._templates?.length?W`<div class="empty">${le}</div>`:F}
       ${(this._templates??[]).map(t=>W`<div class="template">
           <div class="text">
             <span class="key" dir="auto">${t.key}</span>
             <span class="name" dir="auto">${t.name}</span>
             <div class="summary">${this._summary(t)}</div>
           </div>
-          <button class="edit" @click=${()=>this._editing=t}>${It}</button>
-          <button class="delete" @click=${()=>this._delete(t)}>${Wt}</button>
+          <button class="edit" @click=${()=>this._editing=t}>${Ft}</button>
+          <button class="delete" @click=${()=>this._delete(t)}>${Qt}</button>
         </div>`)}
-    </div>`}};ve.styles=n`
+    </div>`}};ye.styles=n`
     .template {
       display: flex;
       align-items: center;
@@ -434,10 +434,10 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
       color: var(--secondary-text-color);
       padding: 8px 0;
     }
-  `,t([pt({attribute:!1})],ve.prototype,"hass",void 0),t([ut()],ve.prototype,"_templates",void 0),t([ut()],ve.prototype,"_editing",void 0),t([ut()],ve.prototype,"_error",void 0),ve=t([ht("seq-template-list")],ve);let $e=class extends at{constructor(){super(...arguments),this.hass=null,this._tab="queue"}setConfig(t){}getCardSize(){return 6}static getStubConfig(){return{}}render(){return this.hass?.user&&!1===this.hass.user.is_admin?W`<ha-card .header=${xt}><div class="note">${At}</div></ha-card>`:W`
-      <ha-card .header=${xt}>
+  `,t([pt({attribute:!1})],ye.prototype,"hass",void 0),t([ut()],ye.prototype,"_templates",void 0),t([ut()],ye.prototype,"_editing",void 0),t([ut()],ye.prototype,"_error",void 0),ye=t([ht("seq-template-list")],ye);let fe=class extends at{constructor(){super(...arguments),this.hass=null,this._tab="queue"}setConfig(t){}getCardSize(){return 6}static getStubConfig(){return{}}render(){return this.hass?.user&&!1===this.hass.user.is_admin?W`<ha-card .header=${At}><div class="note">${Ct}</div></ha-card>`:W`
+      <ha-card .header=${At}>
         <div class="tabs" role="tablist">
-          ${this._tabButton("queue",wt)} ${this._tabButton("templates",kt)}
+          ${this._tabButton("queue",St)} ${this._tabButton("templates",Et)}
         </div>
         <div class="body">
           ${"queue"===this._tab?W`<seq-queue-entry .hass=${this.hass}></seq-queue-entry>
@@ -450,7 +450,7 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
       @click=${()=>this._tab=t}
     >
       ${e}
-    </button>`}};$e.styles=n`
+    </button>`}};fe.styles=n`
     .tabs {
       display: flex;
       gap: 4px;
@@ -477,4 +477,4 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
       padding: 16px;
       color: var(--secondary-text-color);
     }
-  `,t([pt({attribute:!1})],$e.prototype,"hass",void 0),t([ut()],$e.prototype,"_tab",void 0),$e=t([ht("sequence-scheduler-card")],$e),window.customCards=window.customCards??[],window.customCards.push({type:"sequence-scheduler-card",name:"Sequence Scheduler",description:"Queue one-off sequences of actions from short text lines."}),console.info("sequence-scheduler-card 0.2.2");export{$e as SequenceSchedulerCard};
+  `,t([pt({attribute:!1})],fe.prototype,"hass",void 0),t([ut()],fe.prototype,"_tab",void 0),fe=t([ht("sequence-scheduler-card")],fe),window.customCards=window.customCards??[],window.customCards.push({type:"sequence-scheduler-card",name:"Sequence Scheduler",description:"Queue one-off sequences of actions from short text lines."}),console.info("sequence-scheduler-card 0.2.2");export{fe as SequenceSchedulerCard};

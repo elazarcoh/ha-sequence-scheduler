@@ -47,6 +47,19 @@ describe('hintFor', () => {
     expect(hintFor('kids +30 ', TEMPLATES)).toBeNull();
   });
 
+  it('accepts compact (2200) and 12-hour (10pm) clock times', () => {
+    const full = 'temp (26) · fan (silent: auto / quiet / silent / high)';
+    for (const line of ['kids 2200 ', 'kids 930 1h ', 'kids 10pm ', 'kids 10:30PM 1h ', 'kids 1030pm ',
+      'kids 12am 1:30am ', 'kids 2200-0130 ', 'kids 10pm-6am ', 'kids now-0600 ']) {
+      expect(hintFor(line, TEMPLATES), line).toBe(full);
+    }
+    // A bare number after the start is a value, not an end.
+    expect(hintFor('kids 2200 0130 ', TEMPLATES)).toBe('fan (silent: auto / quiet / silent / high)');
+    for (const bad of ['kids 2400 ', 'kids 13pm ', 'kids 10p ', 'kids 2200-13pm ']) {
+      expect(hintFor(bad, TEMPLATES), bad).toBeNull();
+    }
+  });
+
   it('works with a Hebrew key', () => {
     expect(hintFor('מזגן 01:00 1h ', TEMPLATES)).toContain('temp (26)');
   });

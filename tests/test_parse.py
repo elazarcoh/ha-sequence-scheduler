@@ -169,3 +169,65 @@ def test_range_token(text, start, delay, end):
 def test_range_and_relative_errors(text, code):
     e = one(text)
     assert isinstance(e, LineError) and e.code == code, e
+
+
+# --- compact (2200) and 12-hour (10pm) clock times --------------------------
+
+
+@pytest.mark.parametrize(
+    "token,hm",
+    [
+        ("2200", (22, 0)), ("0130", (1, 30)), ("0000", (0, 0)), ("2359", (23, 59)), ("930", (9, 30)),
+        ("10pm", (22, 0)), ("10PM", (22, 0)), ("10am", (10, 0)), ("10:30pm", (22, 30)),
+        ("1030pm", (22, 30)), ("12am", (0, 0)), ("12pm", (12, 0)), ("12:15am", (0, 15)),
+        ("1am", (1, 0)), ("9:05Am", (9, 5)),
+    ],
+)
+def test_compact_and_12h_start(token, hm):
+    p = one(f"kids {token} 1h 25")
+    assert isinstance(p, ParsedLine), p
+    assert (p.hour, p.minute) == hm and p.delay is None
+    assert p.duration == timedelta(hours=1) and p.positional == ("25",)
+
+
+@pytest.mark.parametrize(
+    "token", ["2400", "2260", "99", "12345", "0pm", "13pm", "10:60pm", "10 pm", "10p", "1:5pm", "pm"]
+)
+def test_bad_compact_and_12h_start(token):
+    e = one(f"kids {token} 1h")
+    assert isinstance(e, LineError) and e.code in ("bad_time", "missing_time"), e
+
+
+@pytest.mark.parametrize(
+    "text,start,end",
+    [
+        ("kids 2200-0130 25", (22, 0), (1, 30)),
+        ("kids 10pm-1:30am 25", (22, 0), (1, 30)),
+        ("kids 22:00-6am 25", (22, 0), (6, 0)),
+        ("kids 930pm-2300 25", (21, 30), (23, 0)),
+    ],
+)
+def test_compact_and_12h_ranges(text, start, end):
+    p = one(text)
+    assert isinstance(p, ParsedLine), p
+    assert (p.hour, p.minute) == start and (p.end_hour, p.end_minute) == end
+    assert p.duration is None and p.positional == ("25",)
+
+
+def test_12h_standalone_end():
+    p = one("kids 10pm 1:30am 25")
+    assert (p.hour, p.minute, p.end_hour, p.end_minute) == (22, 0, 1, 30)
+    assert p.positional == ("25",)
+
+
+def test_bare_number_after_start_stays_a_value():
+    """A standalone end needs ':' or am/pm; plain digits there are template values (100%, 2000K)."""
+    p = one("kitchen 2200 100 2000")
+    assert (p.hour, p.minute) == (22, 0)
+    assert (p.end_hour, p.end_minute) == (None, None) and p.duration is None
+    assert p.positional == ("100", "2000")
+
+
+def test_range_then_12h_end_is_two_ends():
+    e = one("kids 2200-0100 3am")
+    assert isinstance(e, LineError) and e.code == "two_ends"

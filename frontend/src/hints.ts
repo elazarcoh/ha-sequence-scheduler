@@ -7,17 +7,23 @@
 import type { Placeholder, Template } from './types';
 
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+const COMPACT = /^([01]?\d|2[0-3])([0-5]\d)$/;
+const TWELVE = /^(0?[1-9]|1[0-2])(:?[0-5]\d)?(am|pm)$/i;
+
+/** 22:00, 10pm, 10:30pm, 1030pm, and (unless `compact` is false) 2200 / 930. */
+const isClock = (token: string, compact = true) =>
+  TIME.test(token) || TWELVE.test(token) || (compact && COMPACT.test(token));
 const DURATION = [/^\d+(\.\d+)?h$/i, /^\d+m$/i, /^\d+h\d{1,2}m?$/i];
 
 const isDuration = (token: string) => DURATION.some((re) => re.test(token));
 
-/** A start token: HH:MM, now, or +<duration>; optionally `-HH:MM` for a range. */
+/** A start token: a clock time, now, or +<duration>; optionally `-<clock>` for a range. */
 function startToken(token: string): { ok: boolean; range: boolean } {
   const [start, ...end] = token.split('-');
-  const startOk = TIME.test(start) || start.toLowerCase() === 'now'
+  const startOk = isClock(start) || start.toLowerCase() === 'now'
     || (start.startsWith('+') && isDuration(start.slice(1)));
   if (!startOk || end.length > 1) return { ok: false, range: false };
-  if (end.length === 1) return { ok: TIME.test(end[0]), range: true };
+  if (end.length === 1) return { ok: isClock(end[0]), range: true };
   return { ok: true, range: false };
 }
 
@@ -46,7 +52,7 @@ export function hintFor(line: string, templates: Template[]): string | null {
   if (!start.ok) return null;
 
   let rest = tokens.slice(2);
-  if (!start.range && rest.length && (isDuration(rest[0]) || TIME.test(rest[0]))) rest = rest.slice(1);
+  if (!start.range && rest.length && (isDuration(rest[0]) || isClock(rest[0], false))) rest = rest.slice(1);
   const named = new Set(
     rest.filter((t) => t.includes('=')).map((t) => t.split('=', 1)[0].toLocaleLowerCase()),
   );

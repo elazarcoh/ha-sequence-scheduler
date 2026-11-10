@@ -16,7 +16,7 @@ It works for any device or action: AC, lights, smart plugs, switches, scripts.
 2. **Queue (the one-minute part).** Write one line per block:
 
    ```
-   <name> <start>[-<HH:MM>] [end] [values...]
+   <name> <start>[-<clock>] [end] [values...]
    ```
 
    ```
@@ -30,17 +30,22 @@ It works for any device or action: AC, lights, smart plugs, switches, scripts.
    kids 01:00-02:30 25
    heater +20m 1h
    heater now-06:00
+   kitchen 2200 30m 40%
+   kids 10pm-6:30am 25
    ```
 
+   - **Clock times** can be written `22:00`, `2200` (or `930`), `10pm`, `10:30pm` or `1030pm`.
+     `12am` is midnight, `12pm` is noon.
    - **Start** is either a clock time or a delay:
      - `01:00` means the next time the clock shows 01:00. Typed at 22:30, that's tonight.
      - `+30m`, `+1h30` or `now` count from the moment you press Queue. The readback marks these
        times with ≈.
    - **End** (optional) is either a duration or a clock time:
      - `1h`, `1.5h`, `90m` or `1h30` count from the start.
-     - `02:30` means the first 02:30 after the start.
-     - `<start>-<HH:MM>`, for example `01:00-02:30` or `now-06:00`, gives the start and the end in
-       one go.
+     - `02:30` (or `2:30am`) means the first 02:30 after the start. Here the time needs a `:` or
+       am/pm: a bare number like `0230` after the start is read as a value.
+     - `<start>-<clock>`, for example `01:00-02:30`, `2200-0130`, `10pm-6am` or `now-06:00`, gives
+       the start and the end in one go.
    - **Values** go in the template's order, or by name (`fan=low`). Anything left out uses its default.
    - As you type, a hint shows what the template expects next. The readback lists every line with its
      real times and flags mistakes before anything is queued. For example, a fan mode that AC doesn't

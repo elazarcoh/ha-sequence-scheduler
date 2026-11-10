@@ -1,11 +1,14 @@
 """Text lines -> ParsedLine or LineError, plus wall-clock time resolution.
 
-Grammar, one block per line:  <key> <start>[-<HH:MM>] [<end>] [<values...>]
+Grammar, one block per line:  <key> <start>[-<clock>] [<end>] [<values...>]
 
-- start: HH:MM (the next time the clock shows it), +<duration> (that long
-  after "now"), or `now`.
-- end: a duration after the start, or HH:MM (the first time the clock shows
-  it after the start). `<start>-<HH:MM>` gives both in one token.
+- clock: 22:00, 2200 (or 930), 10pm, 10:30pm or 1030pm.
+- start: a clock time (the next time the clock shows it), +<duration> (that
+  long after "now"), or `now`.
+- end: a duration after the start, or a clock time (the first time the clock
+  shows it after the start). `<start>-<clock>` gives both in one token.
+  A standalone end must have a ':' or am/pm: bare digits there (100, 2000)
+  are template values.
 Values are positional, or named as key=value; positional must come first.
 """
 
@@ -18,6 +21,8 @@ from datetime import UTC, date, datetime, time, timedelta
 from homeassistant.util import dt as dt_util
 
 _TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+_COMPACT = re.compile(r"^([01]?\d|2[0-3])([0-5]\d)$")
+_TWELVE = re.compile(r"^(0?[1-9]|1[0-2])(?::?([0-5]\d))?(am|pm)$", re.IGNORECASE)
 _DUR_HOURS = re.compile(r"^(\d+(?:\.\d+)?)h$")
 _DUR_MINUTES = re.compile(r"^(\d+)m$")
 _DUR_HM = re.compile(r"^(\d+)h(\d{1,2})m?$")
@@ -60,13 +65,28 @@ def parse_duration(token: str) -> timedelta | None:
     return None
 
 
-_START_HELP = "a time like 01:00, +30m or now"
+def parse_clock(token: str, *, compact: bool = True) -> tuple[int, int] | None:
+    """(hour, minute) for 22:00, 10pm, 10:30pm, 1030pm and (when `compact`) 2200/930.
+
+    `compact=False` is for the standalone end, where bare digits are values.
+    """
+    if m := _TIME.match(token):
+        return int(m.group(1)), int(m.group(2))
+    if compact and (m := _COMPACT.match(token)):
+        return int(m.group(1)), int(m.group(2))
+    if m := _TWELVE.match(token):
+        hour = int(m.group(1)) % 12 + (12 if m.group(3).casefold() == "pm" else 0)
+        return hour, int(m.group(2) or 0)
+    return None
+
+
+_START_HELP = "a time like 22:00, 2200, 10pm, +30m or now"
 
 
 def _parse_start(token: str) -> tuple[int | None, int | None, timedelta | None] | None:
     """(hour, minute, delay) for a start token, or None when it is not one."""
-    if m := _TIME.match(token):
-        return int(m.group(1)), int(m.group(2)), None
+    if (hm := parse_clock(token)) is not None:
+        return hm[0], hm[1], None
     if token.casefold() == "now":
         return None, None, timedelta(0)
     if token.startswith("+") and (d := parse_duration(token[1:])) is not None:
@@ -88,12 +108,15 @@ def _parse_line(lineno: int, raw: str) -> ParsedLine | LineError:
     duration = None
     end_hour = end_minute = None
     if dash:
-        if not (m := _TIME.match(range_end)):
+        if (end := parse_clock(range_end)) is None:
             return LineError(
-                lineno, raw, "bad_end", f"after '-' put a clock time like 02:30, not {range_end!r}"
+                lineno, raw, "bad_end",
+                f"after '-' put a clock time like 02:30, 0230 or 2:30am, not {range_end!r}",
             )
-        end_hour, end_minute = int(m.group(1)), int(m.group(2))
-        if rest and (parse_duration(rest[0]) is not None or _TIME.match(rest[0])):
+        end_hour, end_minute = end
+        if rest and (
+            parse_duration(rest[0]) is not None or parse_clock(rest[0], compact=False) is not None
+        ):
             return LineError(
                 lineno, raw, "two_ends", f"{rest[0]!r} is a second end; the range already has one"
             )
@@ -102,8 +125,8 @@ def _parse_line(lineno: int, raw: str) -> ParsedLine | LineError:
             return LineError(lineno, raw, "bad_duration", f"{rest[0]!r} is zero")
         duration = d
         rest = rest[1:]
-    elif rest and (m := _TIME.match(rest[0])):
-        end_hour, end_minute = int(m.group(1)), int(m.group(2))
+    elif rest and (end := parse_clock(rest[0], compact=False)) is not None:
+        end_hour, end_minute = end
         rest = rest[1:]
     positional: list[str] = []
     named: dict[str, str] = {}
