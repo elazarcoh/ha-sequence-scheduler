@@ -1,2 +1,2 @@
 /** Stamped into the Lovelace resource URL so a rebuild busts the cache. */
-export const CARD_VERSION = '0.2.2';
+export const CARD_VERSION = '0.3.0';
