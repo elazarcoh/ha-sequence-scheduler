@@ -483,4 +483,4 @@ function(t){return(e,s,i)=>((t,e,s)=>(s.configurable=!0,s.enumerable=!0,Reflect.
       padding: 16px;
       color: var(--secondary-text-color);
     }
-  `,t([pt({attribute:!1})],be.prototype,"hass",void 0),t([ut()],be.prototype,"_tab",void 0),be=t([ht("sequence-scheduler-card")],be),window.customCards=window.customCards??[],window.customCards.push({type:"sequence-scheduler-card",name:"Sequence Scheduler",description:"Queue one-off sequences of actions from short text lines."}),console.info("sequence-scheduler-card 0.3.0");export{be as SequenceSchedulerCard};
+  `,t([pt({attribute:!1})],be.prototype,"hass",void 0),t([ut()],be.prototype,"_tab",void 0),be=t([ht("sequence-scheduler-card")],be),window.customCards=window.customCards??[],window.customCards.push({type:"sequence-scheduler-card",name:"Sequence Scheduler",description:"Queue one-off sequences of actions from short text lines."}),console.info("sequence-scheduler-card 0.4.0");export{be as SequenceSchedulerCard};
