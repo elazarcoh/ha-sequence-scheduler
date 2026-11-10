@@ -47,6 +47,11 @@ export class SeqTemplateList extends LitElement {
       padding: 4px 10px;
       cursor: pointer;
     }
+    .problem {
+      color: var(--error-color, #c62828);
+      font-size: 0.85em;
+      overflow-wrap: anywhere;
+    }
     .empty,
     .error {
       color: var(--secondary-text-color);
@@ -106,6 +111,7 @@ export class SeqTemplateList extends LitElement {
             <span class="key" dir="auto">${t.key}</span>
             <span class="name" dir="auto">${t.name}</span>
             <div class="summary">${this._summary(t)}</div>
+            ${(t.problems ?? []).map((p) => html`<div class="problem" dir="auto">${p}</div>`)}
           </div>
           <button class="edit" @click=${() => (this._editing = t)}>${S.edit}</button>
           <button class="delete" @click=${() => this._delete(t)}>${S.delete}</button>

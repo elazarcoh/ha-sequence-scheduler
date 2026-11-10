@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 
 from .models import Action, Block, Placeholder, Step, Template
 from .parse import LineError, ParsedLine, next_occurrence, parse_text, shows_wall_time
+from . import target_filter
 from .store import QueueStore, TemplateStore
 
 FAR_FUTURE = timedelta(hours=12)
@@ -81,16 +82,46 @@ def expand_entities(hass: HomeAssistant, actions: Iterable[Action]) -> list[str]
     Uses the same helper as ha-shabbat-scheduler's `_resolver`: `referenced`
     holds entities named outright, `indirectly_referenced` what areas,
     devices, floors and labels expand into. Entities without a state (a
-    deleted or misspelt id) are dropped so `no_entities` can catch them.
+    deleted or misspelt id) are dropped so `no_entities` can catch them, and
+    so are entities the action can't act on (light.turn_on on an area's
+    plug): HA would skip those silently.
     """
     found: set[str] = set()
     for action in actions:
-        if not action.target:
-            continue
-        selection = target_helper.TargetSelection(dict(action.target))
-        selected = target_helper.async_extract_referenced_entity_ids(hass, selection)
-        found |= selected.referenced | selected.indirectly_referenced
+        found |= {
+            e for e in _referenced(hass, action)
+            if target_filter.accepts(hass, action.action, e)
+        }
     return sorted(e for e in found if hass.states.get(e) is not None)
+
+
+def _referenced(hass: HomeAssistant, action: Action) -> set[str]:
+    if not action.target:
+        return set()
+    selection = target_helper.TargetSelection(dict(action.target))
+    selected = target_helper.async_extract_referenced_entity_ids(hass, selection)
+    return selected.referenced | selected.indirectly_referenced
+
+
+def _typed(action: Action) -> set[str]:
+    """The entity ids written in the target, before any group expansion."""
+    raw = (action.target or {}).get("entity_id")
+    values = [raw] if isinstance(raw, str) else raw if isinstance(raw, (list, tuple)) else []
+    return {v.strip().lower() for value in values if isinstance(value, str)
+            for v in value.split(",") if v.strip()}
+
+
+def target_problem(hass: HomeAssistant, action: Action) -> Issue | None:
+    """Does the action name an entity it can't act on?
+
+    Home Assistant skips such an entity with only a log warning, so the call
+    "runs" and nothing happens: input_boolean.turn_on on a switch did exactly
+    that to the kids' sleep mode. Only entities named outright count; what an
+    area, label or group brings in is filtered by `expand_entities` instead.
+    """
+    if bad := target_filter.rejected(hass, action.action, _typed(action)):
+        return Issue("wrong_target", target_filter.describe(hass, action.action, bad))
+    return None
 
 
 def select_options(
@@ -177,7 +208,8 @@ def _apply(
 def action_problem(hass: HomeAssistant, action: Action) -> Issue | None:
     """Would Home Assistant refuse this action outright?
 
-    Checks what the call itself will check: that the action exists, and its
+    Checks what the call itself will check: that the action exists, that
+    it can act on the entities it names (HA would skip them silently), and its
     data (with the target merged in, as the call does) against the action's
     own schema. A template saved outside the card's editor can name a field
     the action does not take, e.g. fan_mode on climate.set_temperature,
@@ -187,6 +219,8 @@ def action_problem(hass: HomeAssistant, action: Action) -> Issue | None:
     svc = hass.services.async_services_internal().get(domain, {}).get(service)
     if svc is None:
         return Issue("unknown_action", f"{action.action} does not exist in Home Assistant")
+    if issue := target_problem(hass, action):
+        return issue
     payload = {**action.data, **(action.target or {})}
     if svc.schema is None or any(isinstance(v, str) and "{" in v for v in payload.values()):
         return None
@@ -219,6 +253,9 @@ def _resolve(
         row.errors.append(Issue("unknown_template", f"no template called {parsed.key!r}"))
         return row
     row.template_id, row.template_name = template.id, template.name
+    for action in (*template.start, *template.end):
+        if issue := target_problem(hass, action):
+            row.errors.append(issue)
     row.entity_ids = expand_entities(hass, (*template.start, *template.end))
     if not row.entity_ids:
         row.errors.append(Issue("no_entities", "the template's targets match no existing entity"))
@@ -275,6 +312,9 @@ def _resolve(
             if issue := action_problem(hass, action):
                 row.errors.append(issue)
                 row.ok = False
+            elif action.target == {"entity_id": []}:
+                row.warnings.append(Issue(
+                    "reaches_nothing", f"{action.action} reaches no entity it can act on"))
     return row
 
 

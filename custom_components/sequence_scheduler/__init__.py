@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.start import async_at_started
 
-from . import websocket_api
+from . import target_filter, websocket_api
 from .const import CONF_GRACE_MINUTES, DEFAULT_GRACE_MINUTES, DOMAIN
 from .engine import SequenceEngine
 from .frontend import async_register_frontend, async_unregister_frontend
@@ -31,6 +31,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     websocket_api.async_register(hass)
 
     async def _start(_hass: HomeAssistant) -> None:
+        # Every integration is loaded now; the engine reads these when a step runs.
+        await target_filter.async_load_descriptions(hass)
         await engine.async_start()
 
     entry.async_on_unload(async_at_started(hass, _start))

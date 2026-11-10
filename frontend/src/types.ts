@@ -27,6 +27,8 @@ export interface Template {
   start: ActionData[];
   end: ActionData[];
   placeholders: Placeholder[];
+  /** Saved actions Home Assistant would skip (e.g. an action on an entity it can't take). */
+  problems?: string[];
 }
 
 export interface Issue {

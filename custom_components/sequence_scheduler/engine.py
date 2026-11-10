@@ -20,6 +20,7 @@ from homeassistant.helpers.service import async_call_from_config
 from homeassistant.util import dt as dt_util
 
 from .const import EVENT_STEP_DUE, EVENT_STEP_RESULT, RETRY_ATTEMPTS, RETRY_DELAY_SECONDS
+from . import target_filter
 from .models import Action, Block, Step
 from .store import QueueStore
 
@@ -211,7 +212,31 @@ class SequenceEngine:
                 out.append(entity_id)
         return out
 
+    def _wrong_targets(self, action: Action) -> list[str]:
+        """Targeted entities the action can't act on, which HA skips silently.
+
+        New blocks never hold these (the preview refuses them), but a block
+        queued before that check existed can.
+        """
+        if not action.target:
+            return []
+        selection = target_helper.TargetSelection(dict(action.target))
+        selected = target_helper.async_extract_referenced_entity_ids(self.hass, selection)
+        return target_filter.rejected(
+            self.hass, action.action, selected.referenced | selected.indirectly_referenced)
+
     async def _async_call(self, action: Action, context: Context) -> str | None:
+        # Descriptions come from the cache (loaded at start and by the card):
+        # an await here would let other steps interleave.
+        if wrong := self._wrong_targets(action):
+            # Still call it: the other targets may be fine. The step is failed.
+            error = await self._async_call_once(action, context)
+            reason = target_filter.describe(self.hass, action.action, wrong)
+            _LOGGER.error("%s", reason)
+            return "; ".join(e for e in (error, reason) if e)
+        return await self._async_call_once(action, context)
+
+    async def _async_call_once(self, action: Action, context: Context) -> str | None:
         config: dict = {"action": action.action, "data": dict(action.data)}
         if action.target:
             config["target"] = dict(action.target)

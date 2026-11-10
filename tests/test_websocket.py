@@ -210,3 +210,36 @@ async def test_save_refuses_a_field_the_action_does_not_take(hass, ws):
     unknown = {**KIDS, "key": "x", "start": [{**KIDS["start"][0], "action": "nope.do_it"}], "placeholders": []}
     msg = await call(ws, "sequence_scheduler/templates/save", template=unknown)
     assert "unknown_action" in msg["error"]["message"]
+
+
+async def test_save_refuses_an_entity_the_action_cannot_take(hass, ws):
+    from homeassistant.helpers.service import async_set_service_schema
+
+    async_mock_service(hass, "input_boolean", "turn_on")
+    async_set_service_schema(hass, "input_boolean", "turn_on",
+                             {"fields": {}, "target": {"entity": [{"domain": ["input_boolean"]}]}})
+    hass.states.async_set("switch.slp", "off")
+    bad = {**KIDS, "start": [*KIDS["start"], {"action": "input_boolean.turn_on",
+                                              "target": {"entity_id": ["switch.slp"]}, "data": {}}]}
+    msg = await call(ws, "sequence_scheduler/templates/save", template=bad)
+    assert not msg["success"]
+    assert "wrong_target" in msg["error"]["message"]
+    assert "switch.slp" in msg["error"]["message"]
+
+
+async def test_list_flags_a_saved_template_the_check_would_refuse(hass, ws):
+    from homeassistant.helpers.service import async_set_service_schema
+
+    from custom_components.sequence_scheduler.models import Action, Template
+
+    async_mock_service(hass, "input_boolean", "turn_on")
+    async_set_service_schema(hass, "input_boolean", "turn_on",
+                             {"fields": {}, "target": {"entity": [{"domain": ["input_boolean"]}]}})
+    store = next(iter(hass.data[DOMAIN].values()))["templates"]
+    await store.async_save(Template(
+        "t-old", "old", "Old", (Action("input_boolean.turn_on", {"entity_id": ["switch.slp"]}, {}),), (), ()))
+    assert (await call(ws, "sequence_scheduler/templates/save", template=KIDS))["success"]
+    msg = await call(ws, "sequence_scheduler/templates/list")
+    by_key = {t["key"]: t for t in msg["result"]["templates"]}
+    assert by_key["kids"]["problems"] == []
+    assert by_key["old"]["problems"] == ["input_boolean.turn_on can't act on switch.slp (it takes input_boolean entities)"]

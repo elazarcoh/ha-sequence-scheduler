@@ -38,6 +38,20 @@ describe('seq-template-list', () => {
     expect(row.textContent).toContain('climate.set_temperature → climate.turn_off');
   });
 
+  it('shows what is wrong with a saved template', async () => {
+    const hass = fakeHass();
+    const problem = "input_boolean.turn_on can't act on switch.slp; use switch.turn_on";
+    hass.callWS = vi.fn(async (msg: any): Promise<any> =>
+      msg.type === 'sequence_scheduler/templates/list' ? { templates: [{ ...KIDS, problems: [problem] }] } : {});
+    const el = await render(hass);
+    expect(el.shadowRoot.querySelector('.problem').textContent).toBe(problem);
+  });
+
+  it('shows no problem line when there is none', async () => {
+    const el = await render(fakeHass());
+    expect(el.shadowRoot.querySelector('.problem')).toBeNull();
+  });
+
   it('confirms before deleting, naming the template', async () => {
     const hass = fakeHass();
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);

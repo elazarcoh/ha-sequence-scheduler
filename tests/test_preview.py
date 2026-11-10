@@ -356,3 +356,76 @@ async def test_unknown_action_is_an_error(env):
     ))
     rows = build_preview(hass, templates, queue, "gone 01:00", NOW)
     assert codes(rows[0].errors) == ["unknown_action"]
+
+
+# --- actions only act on entities they take -------------------------------
+
+
+def takes(hass, action, domains):
+    from homeassistant.helpers.service import async_set_service_schema
+
+    domain, service = action.split(".")
+    async_mock_service(hass, domain, service)
+    async_set_service_schema(hass, domain, service, {"fields": {}, "target": {"entity": [{"domain": domains}]}})
+
+
+async def test_action_naming_an_entity_it_cannot_take_is_an_error(env):
+    """The kids' sleep step: input_boolean.turn_on on a switch did nothing."""
+    hass, templates, queue = env
+    takes(hass, "input_boolean.turn_on", ["input_boolean"])
+    takes(hass, "switch.turn_on", ["switch"])
+    hass.states.async_set("switch.slp", "off")
+    await templates.async_save(Template(
+        "t-slp", "slp", "Sleep",
+        (Action("climate.set_temperature", {"entity_id": ["climate.kids"]}, {"temperature": 26}),
+         Action("input_boolean.turn_on", {"entity_id": ["switch.slp"]}, {})),
+        (), (),
+    ))
+    [row] = build_preview(hass, templates, queue, "slp 01:00", NOW)
+    assert not row.ok
+    assert codes(row.errors) == ["wrong_target"]
+    assert row.errors[0].detail == (
+        "input_boolean.turn_on can't act on switch.slp (it takes input_boolean entities); "
+        "use switch.turn_on")
+    assert row.entity_ids == ["climate.kids"]
+
+
+async def test_area_entities_the_action_cannot_take_are_left_out(env):
+    from homeassistant.helpers import area_registry as ar
+    from homeassistant.helpers import entity_registry as er
+
+    hass, templates, queue = env
+    takes(hass, "light.turn_on", ["light"])
+    area = ar.async_get(hass).async_create("Hall")
+    reg = er.async_get(hass)
+    for domain in ("light", "switch"):
+        ent = reg.async_get_or_create(domain, "test", "hall", suggested_object_id="hall")
+        reg.async_update_entity(ent.entity_id, area_id=area.id)
+        hass.states.async_set(ent.entity_id, "off")
+    await templates.async_save(Template(
+        "t-hall", "hall", "Hall", (Action("light.turn_on", {"area_id": area.id}, {}),), (), (),
+    ))
+    [row] = build_preview(hass, templates, queue, "hall 01:00", NOW)
+    assert row.ok, row.errors
+    assert row.entity_ids == ["light.hall"]
+    assert row.start_actions[0].target == {"entity_id": ["light.hall"]}
+
+
+async def test_area_with_nothing_the_action_takes_warns(env):
+    from homeassistant.helpers import area_registry as ar
+    from homeassistant.helpers import entity_registry as er
+
+    hass, templates, queue = env
+    takes(hass, "light.turn_on", ["light"])
+    area = ar.async_get(hass).async_create("Porch")
+    ent = er.async_get(hass).async_get_or_create("switch", "test", "porch", suggested_object_id="porch")
+    er.async_get(hass).async_update_entity(ent.entity_id, area_id=area.id)
+    hass.states.async_set(ent.entity_id, "off")
+    await templates.async_save(Template(
+        "t-porch", "porch", "Porch",
+        (Action("switch.turn_on", {"entity_id": "switch.boiler"}, {}),
+         Action("light.turn_on", {"area_id": area.id}, {})), (), (),
+    ))
+    [row] = build_preview(hass, templates, queue, "porch 01:00", NOW)
+    assert row.ok, row.errors
+    assert codes(row.warnings) == ["reaches_nothing"]

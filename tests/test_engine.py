@@ -381,3 +381,22 @@ async def test_skipped_start_is_remembered(hass, freezer, services):
     await engine.async_start()
     block = queue.get("b1")
     assert block.start_outcome == "skipped" and "overdue" in block.start_detail
+
+
+async def test_queued_action_on_an_entity_it_cannot_take_fails(hass, freezer, services):
+    """A block queued before the check: the step must not read as ran."""
+    from homeassistant.helpers.service import async_set_service_schema
+
+    async_mock_service(hass, "input_boolean", "turn_on")
+    async_set_service_schema(hass, "input_boolean", "turn_on",
+                             {"fields": {}, "target": {"entity": [{"domain": ["input_boolean"]}]}})
+    hass.states.async_set("switch.slp", "off")
+    bad = Action("input_boolean.turn_on", {"entity_id": ["switch.slp"]}, {})
+    freezer.move_to(T0)
+    engine, queue = await new_engine(hass, [make_block(T0 + timedelta(minutes=1), start=(ON, bad))])
+    events = async_capture_events(hass, EVENT_STEP_RESULT)
+    await engine.async_start()
+    await advance(hass, freezer, T0 + timedelta(minutes=1))
+    assert outcomes(events) == [("start", "failed")]
+    assert "input_boolean.turn_on can't act on switch.slp" in events[0].data["detail"]
+    assert len(services["on"]) == 1

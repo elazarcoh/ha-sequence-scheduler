@@ -60,6 +60,12 @@ It works for any device or action: AC, lights, smart plugs, switches, scripts.
   steps are **skipped, including ends**, so a long outage can leave a device on. Every skip is logged.
 - **Crash in the middle of a step.** An interrupted end is run again after a restart (turning off twice is
   harmless). An interrupted start is not, because it may already have run.
+- **Actions only reach entities they can act on.** Home Assistant silently skips an entity an action
+  can't handle, such as `input_boolean.turn_on` on a switch. The scheduler checks each action's targets
+  against Home Assistant's own description of that action: a template that names such an entity can't be
+  saved or queued (the message suggests the right action), the Templates tab flags one saved earlier, and
+  an already queued step that hits one is logged as failed. Entities an area or label brings in that the
+  action can't act on are simply left out.
 - **Queued plans keep a frozen copy.** Editing or deleting a template doesn't change plans already queued.
 - **Logbook.** Every step that runs, fails, is skipped or is cancelled appears in the logbook, and device
   changes are attributed to the step.

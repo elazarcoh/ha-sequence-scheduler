@@ -23,7 +23,9 @@ from .preview import (
     preview_token,
     rows_to_blocks,
     select_options,
+    target_problem,
 )
+from .target_filter import async_load_descriptions
 from .template_schema import TemplateError, validate_template
 
 STALE_AFTER = timedelta(minutes=10)
@@ -46,6 +48,11 @@ def _template_payload(hass: HomeAssistant, template) -> dict:
         raw["resolved_options"] = (
             select_options(hass, p, entity_ids) if p.kind == "select" else None
         )
+    # Saved before this check existed, or outside the editor: say so on the list.
+    out["problems"] = [
+        issue.detail for a in (*template.start, *template.end)
+        if (issue := target_problem(hass, a))
+    ]
     return out
 
 
@@ -55,10 +62,11 @@ def _blocks_payload(data: dict) -> dict:
 
 @websocket_api.require_admin
 @websocket_api.websocket_command({vol.Required("type"): "sequence_scheduler/templates/list"})
-@callback
-def ws_templates_list(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+@websocket_api.async_response
+async def ws_templates_list(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     if (data := _entry_data(hass)) is None:
         return _not_set_up(connection, msg)
+    await async_load_descriptions(hass)
     connection.send_result(
         msg["id"],
         {"templates": [_template_payload(hass, t) for t in data["templates"].templates]},
@@ -73,6 +81,7 @@ def ws_templates_list(hass: HomeAssistant, connection, msg: dict[str, Any]) -> N
 async def ws_templates_save(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     if (data := _entry_data(hass)) is None:
         return _not_set_up(connection, msg)
+    await async_load_descriptions(hass)
     try:
         template = validate_template(msg["template"])
         for action in (*template.start, *template.end):
@@ -105,10 +114,11 @@ async def ws_templates_delete(hass: HomeAssistant, connection, msg: dict[str, An
 @websocket_api.websocket_command(
     {vol.Required("type"): "sequence_scheduler/preview", vol.Required("text"): str}
 )
-@callback
-def ws_preview(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+@websocket_api.async_response
+async def ws_preview(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     if (data := _entry_data(hass)) is None:
         return _not_set_up(connection, msg)
+    await async_load_descriptions(hass)
     now = dt_util.now()
     rows = build_preview(hass, data["templates"], data["queue"], msg["text"], now)
     connection.send_result(
@@ -130,6 +140,7 @@ def ws_preview(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
 async def ws_queue(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     if (data := _entry_data(hass)) is None:
         return _not_set_up(connection, msg)
+    await async_load_descriptions(hass)
     real_now = dt_util.now()
     try:
         then = datetime.fromisoformat(msg["now"])
